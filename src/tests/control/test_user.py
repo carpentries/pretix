@@ -286,11 +286,6 @@ class UserPasswordChangeTest(SoupTest):
         assert self.user.needs_password_change is False
 
 
-@pytest.fixture
-def class_monkeypatch(request, monkeypatch):
-    request.cls.monkeypatch = monkeypatch
-
-
 @pytest.mark.usefixtures("class_monkeypatch")
 class UserSettings2FATest(SoupTest):
     def setUp(self):
@@ -339,13 +334,17 @@ class UserSettings2FATest(SoupTest):
 
     def test_gen_emergency(self):
         self.client.get('/control/settings/2fa/')
+        assert not StaticDevice.objects.filter(user=self.user, name='emergency').exists()
+
+        self.client.post('/control/settings/2fa/regenemergency')
         d = StaticDevice.objects.get(user=self.user, name='emergency')
         assert d.token_set.count() == 10
         old_tokens = set(t.token for t in d.token_set.all())
+
         self.client.post('/control/settings/2fa/regenemergency')
-        new_tokens = set(t.token for t in d.token_set.all())
         d = StaticDevice.objects.get(user=self.user, name='emergency')
         assert d.token_set.count() == 10
+        new_tokens = set(t.token for t in d.token_set.all())
         assert old_tokens != new_tokens
 
     def test_delete_u2f(self):
@@ -478,7 +477,7 @@ class UserSettingsNotificationsTest(SoupTest):
             organizer=o, name='Dummy', slug='dummy',
             date_from=now(), plugins='pretix.plugins.banktransfer'
         )
-        t = o.teams.create(can_change_orders=True, all_events=True)
+        t = o.teams.create(limit_event_permissions={"event.orders:write": True}, all_events=True)
         t.members.add(self.user)
 
     def test_toggle_all(self):

@@ -51,12 +51,14 @@ from django_scopes import scope, scopes_disabled
 from i18nfield.strings import LazyI18nString
 
 from pretix.base.i18n import language
+from pretix.base.invoicing.pdf import InvoiceNotReadyException
 from pretix.base.invoicing.transmission import (
     get_transmission_types, transmission_providers,
 )
 from pretix.base.models import (
     ExchangeRate, Invoice, InvoiceAddress, InvoiceLine, Order, OrderFee,
 )
+from pretix.base.models.orders import OrderPayment
 from pretix.base.models.tax import EU_CURRENCIES
 from pretix.base.services.tasks import (
     TransactionAwareProfiledEventTask, TransactionAwareTask,
@@ -101,7 +103,7 @@ def build_invoice(invoice: Invoice) -> Invoice:
         introductory = invoice.event.settings.get('invoice_introductory_text', as_type=LazyI18nString)
         additional = invoice.event.settings.get('invoice_additional_text', as_type=LazyI18nString)
         footer = invoice.event.settings.get('invoice_footer_text', as_type=LazyI18nString)
-        if lp and lp.payment_provider:
+        if lp and lp.payment_provider and lp.state not in (OrderPayment.PAYMENT_STATE_FAILED, OrderPayment.PAYMENT_STATE_CANCELED):
             if 'payment' in inspect.signature(lp.payment_provider.render_invoice_text).parameters:
                 payment = str(lp.payment_provider.render_invoice_text(invoice.order, lp))
             else:
@@ -504,7 +506,7 @@ def generate_invoice(order: Order, trigger_pdf=True):
     return invoice
 
 
-@app.task(base=TransactionAwareTask)
+@app.task(base=TransactionAwareTask, throws=(InvoiceNotReadyException,))
 def invoice_pdf_task(invoice: int):
     with scopes_disabled():
         i = Invoice.objects.get(pk=invoice)

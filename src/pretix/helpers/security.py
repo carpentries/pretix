@@ -24,7 +24,8 @@ import logging
 import time
 
 from django.conf import settings
-from django.contrib.gis.geoip2 import GeoIP2
+from django.contrib.auth import login as auth_login
+from django.contrib.gis import geoip2
 from django.core.cache import cache
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
@@ -62,14 +63,20 @@ def get_user_agent_hash(request):
 _geoip = None
 
 
-def _get_country(request):
+def get_geoip() -> geoip2.GeoIP2:
+    # See https://code.djangoproject.com/ticket/36988#ticket
     global _geoip
 
-    if not _geoip:
-        _geoip = GeoIP2()
+    geoip2.SUPPORTED_DATABASE_TYPES.add("Geoacumen-Country")
 
+    if not _geoip:
+        _geoip = geoip2.GeoIP2()
+    return _geoip
+
+
+def _get_country(request):
     try:
-        res = _geoip.country(get_client_ip(request))
+        res = get_geoip().country(get_client_ip(request))
     except AddressNotFoundError:
         return None
     return res['country_code']
@@ -174,3 +181,17 @@ def handle_login_source(user, request):
                     user=user,
                     locale=user.locale
                 )
+
+
+def session_login(request, user, keep_logged_in=False):
+    auth_login(request, user)
+    session_reauth(request)
+    request.session["pretix_auth_long_session"] = (
+        settings.PRETIX_LONG_SESSIONS and keep_logged_in
+    )
+
+
+def session_reauth(request):
+    t = int(time.time())
+    request.session['pretix_auth_login_time'] = t
+    request.session['pretix_auth_last_used'] = t

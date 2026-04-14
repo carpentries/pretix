@@ -67,6 +67,7 @@ from pretix.base.models import (
     Question, ReusableMedium, RevokedTicketSecret, TeamAPIToken,
 )
 from pretix.base.models.orders import PrintLog
+from pretix.base.permissions import AnyPermissionOf
 from pretix.base.services.checkin import (
     CheckInError, RequiredQuestionsError, SQLLogic, perform_checkin,
 )
@@ -118,11 +119,11 @@ class CheckinListViewSet(viewsets.ModelViewSet):
 
     def _get_permission_name(self, request):
         if request.path.endswith('/failed_checkins/'):
-            return 'can_checkin_orders', 'can_change_orders'
+            return 'event.orders:checkin', 'event.orders:write'
         elif request.method in SAFE_METHODS:
-            return 'can_view_orders', 'can_checkin_orders',
+            return 'event.orders:read', 'event.orders:checkin',
         else:
-            return 'can_change_event_settings'
+            return 'event.settings.general:write'
 
     def get_queryset(self):
         qs = self.request.event.checkin_lists.prefetch_related(
@@ -188,11 +189,15 @@ class CheckinListViewSet(viewsets.ModelViewSet):
         clist = self.get_object()
         if serializer.validated_data.get('nonce'):
             if kwargs.get('position'):
-                prev = kwargs['position'].all_checkins.filter(nonce=serializer.validated_data['nonce']).first()
+                prev = kwargs['position'].all_checkins.filter(
+                    nonce=serializer.validated_data['nonce'],
+                    successful=False
+                ).first()
             else:
                 prev = clist.checkins.filter(
                     nonce=serializer.validated_data['nonce'],
                     raw_barcode=serializer.validated_data['raw_barcode'],
+                    successful=False
                 ).first()
             if prev:
                 # Ignore because nonce is already handled
@@ -470,7 +475,7 @@ def _redeem_process(*, checkinlists, raw_barcode, answers_data, datetime, force,
             'event': op.order.event,
             'pdf_data': pdf_data and (
                 user if user and user.is_authenticated else auth
-            ).has_event_permission(request.organizer, event, 'can_view_orders', request),
+            ).has_event_permission(request.organizer, event, 'event.orders:read', request),
         }
 
     common_checkin_args = dict(
@@ -835,8 +840,8 @@ class CheckinListPositionViewSet(viewsets.ReadOnlyModelViewSet):
     }
 
     filterset_class = CheckinOrderPositionFilter
-    permission = ('can_view_orders', 'can_checkin_orders')
-    write_permission = ('can_change_orders', 'can_checkin_orders')
+    permission = AnyPermissionOf('event.orders:read', 'event.orders:checkin')
+    write_permission = AnyPermissionOf('event.orders:write', 'event.orders:checkin')
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
@@ -867,7 +872,7 @@ class CheckinListPositionViewSet(viewsets.ReadOnlyModelViewSet):
             expand=self.request.query_params.getlist('expand'),
         )
 
-        if 'pk' not in self.request.resolver_match.kwargs and 'can_view_orders' not in self.request.eventpermset \
+        if 'pk' not in self.request.resolver_match.kwargs and 'event.orders:read' not in self.request.eventpermset \
                 and len(self.request.query_params.get('search', '')) < 3:
             qs = qs.none()
 
@@ -916,9 +921,9 @@ class CheckinListPositionViewSet(viewsets.ReadOnlyModelViewSet):
 class CheckinRPCRedeemView(views.APIView):
     def post(self, request, *args, **kwargs):
         if isinstance(self.request.auth, (TeamAPIToken, Device)):
-            events = self.request.auth.get_events_with_permission(('can_change_orders', 'can_checkin_orders'))
+            events = self.request.auth.get_events_with_permission(('event.orders:write', 'event.orders:checkin'))
         elif self.request.user.is_authenticated:
-            events = self.request.user.get_events_with_permission(('can_change_orders', 'can_checkin_orders'), self.request).filter(
+            events = self.request.user.get_events_with_permission(('event.orders:write', 'event.orders:checkin'), self.request).filter(
                 organizer=self.request.organizer
             )
         else:
@@ -986,9 +991,9 @@ class CheckinRPCSearchView(ListAPIView):
     @cached_property
     def lists(self):
         if isinstance(self.request.auth, (TeamAPIToken, Device)):
-            events = self.request.auth.get_events_with_permission(('can_view_orders', 'can_checkin_orders'))
+            events = self.request.auth.get_events_with_permission(('event.orders:read', 'event.orders:checkin'))
         elif self.request.user.is_authenticated:
-            events = self.request.user.get_events_with_permission(('can_view_orders', 'can_checkin_orders'), self.request).filter(
+            events = self.request.user.get_events_with_permission(('event.orders:read', 'event.orders:checkin'), self.request).filter(
                 organizer=self.request.organizer
             )
         else:
@@ -1005,9 +1010,9 @@ class CheckinRPCSearchView(ListAPIView):
     @cached_property
     def has_full_access_permission(self):
         if isinstance(self.request.auth, (TeamAPIToken, Device)):
-            events = self.request.auth.get_events_with_permission('can_view_orders')
+            events = self.request.auth.get_events_with_permission('event.orders:read')
         elif self.request.user.is_authenticated:
-            events = self.request.user.get_events_with_permission('can_view_orders', self.request).filter(
+            events = self.request.user.get_events_with_permission('event.orders:read', self.request).filter(
                 organizer=self.request.organizer
             )
         else:
@@ -1034,9 +1039,9 @@ class CheckinRPCSearchView(ListAPIView):
 class CheckinRPCAnnulView(views.APIView):
     def post(self, request, *args, **kwargs):
         if isinstance(self.request.auth, (TeamAPIToken, Device)):
-            events = self.request.auth.get_events_with_permission(('can_change_orders', 'can_checkin_orders'))
+            events = self.request.auth.get_events_with_permission(('event.orders:write', 'event.orders:checkin'))
         elif self.request.user.is_authenticated:
-            events = self.request.user.get_events_with_permission(('can_change_orders', 'can_checkin_orders'), self.request).filter(
+            events = self.request.user.get_events_with_permission(('event.orders:write', 'event.orders:checkin'), self.request).filter(
                 organizer=self.request.organizer
             )
         else:
@@ -1114,10 +1119,10 @@ class CheckinViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_class = CheckinFilter
     ordering = ('created', 'id')
     ordering_fields = ('created', 'datetime', 'id',)
-    permission = 'can_view_orders'
+    permission = 'event.orders:read'
 
     def get_queryset(self):
-        qs = Checkin.all.filter().select_related(
+        qs = Checkin.all.filter(list__event=self.request.event).select_related(
             "position",
             "device",
         )
