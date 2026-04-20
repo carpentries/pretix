@@ -91,15 +91,12 @@ def base_widgets(sender, subevent=None, lazy=False, **kwargs):
         tickc = opqs.filter(
             order__event=sender, item__admission=True,
             order__status__in=(Order.STATUS_PAID, Order.STATUS_PENDING),
-        )
+        ).count()
 
         paidc = opqs.filter(
             order__event=sender, item__admission=True,
             order__status=Order.STATUS_PAID,
-        )
-
-        tickc = tickc.count()
-        paidc = paidc.count()
+        ).count()
 
         if subevent:
             rev = opqs.filter(

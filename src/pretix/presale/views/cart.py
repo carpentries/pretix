@@ -68,7 +68,6 @@ from pretix.base.timemachine import time_machine_now
 from pretix.base.views.tasks import AsyncAction
 from pretix.helpers.http import redirect_to_url
 from pretix.multidomain.urlreverse import eventreverse
-
 from pretix.presale.views import (
     CartMixin, EventViewMixin, allow_cors_if_namespaced,
     allow_frame_if_namespaced, get_cart, iframe_entry_view_wrapper,
@@ -169,7 +168,6 @@ def _item_from_post_value(request, key, value, voucher=None, voucher_ignore_if_r
         except ValueError:
             pass
     elif 'subevent' in request.POST:
-        #  single subevent
         try:
             subevent = int(request.POST.get('subevent'))
         except ValueError:
@@ -657,6 +655,7 @@ class CartAdd(EventViewMixin, CartActionMixin, AsyncAction, View):
                 })
             else:
                 return redirect_to_url(self.get_error_url())
+
 
 @method_decorator(allow_frame_if_namespaced, 'dispatch')
 @method_decorator(iframe_entry_view_wrapper, 'dispatch')

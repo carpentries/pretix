@@ -63,8 +63,7 @@
                                 {% if e.settings.show_times %}
                                     {% timezone e.tzname %}
                                         <br>
-                                        <span class="text-muted" data-time="{{ e.date_from.isoformat }}" data-timezone="{{ e.timezone }}" data-tzstr="{{ e.tzstr }}">
-                                            <br>
+                                        <span class="text-muted" data-time="{{ e.date_from.isoformat }}" data-timezone="{{ e.tzname }}">
                                             {% icon "clock-o" %}
                                             <span class="sr-only">{% trans "Time of day" %}</span>
                                             <time datetime="{{ e.date_from|date_fast:"H:i" }}">{{ e.date_from|date:"TIME_FORMAT" }}</time>
@@ -72,7 +71,6 @@
                                                 <span aria-hidden="true">–</span><span class="sr-only">{% trans "until" context "timerange" %}</span>
                                                 <time datetime="{{ e.date_to|date_fast:"H:i" }}">{{ e.date_to|date:"TIME_FORMAT" }}</time>
                                             {% endif %}
-                                            &nbsp;{{ e.tzstr }}
                                         </span>
                                     {% endtimezone %}
                                 {% endif %}

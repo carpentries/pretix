@@ -39,14 +39,6 @@
     {% else %}
         <meta property="og:url" content="{% abseventurl request.event "presale:event.index" %}" />
     {% endif %}
-
-    {% for k, v in ev.meta_data.items %}
-        <meta property="og:{{ k }}" content="{{ v }}" />
-    {% endfor %}
-
-    {% if event_logo %}
-        <meta property="og:image" content="{{ event_logo|thumb:'5000x120' }}" />
-    {% endif %}
 {% endblock %}
 {% block content %}
 
@@ -72,11 +64,11 @@
                 </div>
             {% endif %}
 
-            <!-- {% if request.GET.voucher %}
+            {% if request.GET.voucher %}
                 <div class="alert alert-info">
                     <p>{% trans "Please select a date to redeem your voucher." %}</p>
                 </div>
-            {% endif %} -->
+            {% endif %}
         {% endif %}
 
 
@@ -237,7 +229,7 @@
                                         {% if allfree %}
                                             <i class="fa fa-check" aria-hidden="true"></i> {% trans "Register" context "free_tickets" %}
                                         {% else %}
-                                        <i class="fa fa-shopping-cart" aria-hidden="true"></i> {% trans "Proceed with checkout" %}
+                                           <i class="fa fa-shopping-cart" aria-hidden="true"></i> {% trans "Proceed with checkout" %}
                                         {% endif %}
                                     {% else %}
                                         <i class="fa fa-shopping-cart" aria-hidden="true"></i> {% trans "Add to cart" %}
