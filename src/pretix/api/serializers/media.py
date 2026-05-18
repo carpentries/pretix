@@ -24,14 +24,16 @@ from decimal import Decimal
 
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from pretix.api.serializers.i18n import I18nAwareModelSerializer
 from pretix.api.serializers.order import OrderPositionSerializer
 from pretix.api.serializers.organizer import (
     CustomerSerializer, GiftCardSerializer,
 )
-from pretix.base.models import Order, OrderPosition, ReusableMedium
+from pretix.base.models import (
+    Device, Order, OrderPosition, ReusableMedium, TeamAPIToken,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,9 @@ class ReusableMediaSerializer(I18nAwareModelSerializer):
         super().__init__(*args, **kwargs)
 
         if 'linked_giftcard' in self.context['request'].query_params.getlist('expand'):
+            if not self.context["can_read_giftcards"]:
+                raise PermissionDenied("No permission to access gift card details.")
+
             self.fields['linked_giftcard'] = NestedGiftCardSerializer(read_only=True, context=self.context)
             if 'linked_giftcard.owner_ticket' in self.context['request'].query_params.getlist('expand'):
                 self.fields['linked_giftcard'].fields['owner_ticket'] = NestedOrderPositionSerializer(read_only=True, context=self.context)
@@ -77,6 +82,7 @@ class ReusableMediaSerializer(I18nAwareModelSerializer):
             )
 
         if 'linked_orderposition' in self.context['request'].query_params.getlist('expand'):
+            # Permission Check performed in to_representation
             self.fields['linked_orderposition'] = NestedOrderPositionSerializer(read_only=True)
         else:
             self.fields['linked_orderposition'] = serializers.PrimaryKeyRelatedField(
@@ -86,6 +92,9 @@ class ReusableMediaSerializer(I18nAwareModelSerializer):
             )
 
         if 'customer' in self.context['request'].query_params.getlist('expand'):
+            if not self.context["can_read_customers"]:
+                raise PermissionDenied("No permission to access customer details.")
+
             self.fields['customer'] = CustomerSerializer(read_only=True)
         else:
             self.fields['customer'] = serializers.SlugRelatedField(
@@ -108,6 +117,27 @@ class ReusableMediaSerializer(I18nAwareModelSerializer):
                     {'identifier': _('A medium with the same identifier and type already exists in your organizer account.')}
                 )
         return data
+
+    def to_representation(self, instance):
+        r = super().to_representation(instance)
+        request = self.context.get('request')
+        # late permission evaluations for checks that depend on the actual linked events
+        expand_nested = self.context['request'].query_params.getlist('expand')
+        perm_holder = request.auth if isinstance(request.auth, (Device, TeamAPIToken)) else request.user
+        if 'linked_orderposition' in expand_nested:
+            if instance.linked_orderposition is not None:
+                event = instance.linked_orderposition.order.event
+                if not perm_holder.has_event_permission(event.organizer, event, 'event.orders:read', request):
+                    r['linked_orderposition'] = {'id': instance.linked_orderposition.id}
+
+        if 'linked_giftcard.owner_ticket' in expand_nested:
+            gc = instance.linked_giftcard
+            if gc is not None and gc.owner_ticket is not None:
+                event = gc.owner_ticket.order.event
+                if not perm_holder.has_event_permission(event.organizer, event, 'event.orders:read', request):
+                    r['linked_giftcard']['owner_ticket'] = {'id': instance.linked_giftcard.owner_ticket.id}
+
+        return r
 
     class Meta:
         model = ReusableMedium

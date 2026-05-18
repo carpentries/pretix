@@ -82,7 +82,8 @@ class CheckInListMixin(BaseExporter):
                      widget=forms.RadioSelect(
                          attrs={'class': 'scrolling-choice'}
                      ),
-                     initial=self.event.checkin_lists.first()
+                     initial=self.event.checkin_lists.first(),
+                     required=True
                  )),
                 ('date_range',
                  DateFrameField(
@@ -143,7 +144,6 @@ class CheckInListMixin(BaseExporter):
         if not self.event.has_subevents:
             del d['date_range']
 
-        d['list'].queryset = self.event.checkin_lists.all()
         d['list'].widget = Select2(
             attrs={
                 'data-model-select2': 'generic',
@@ -155,7 +155,6 @@ class CheckInListMixin(BaseExporter):
             }
         )
         d['list'].widget.choices = d['list'].choices
-        d['list'].required = True
 
         return d
 
@@ -503,7 +502,7 @@ class CSVCheckinList(CheckInListMixin, ListExporter):
         if cl.include_pending:
             headers.append(_('Paid'))
 
-        if form_data['secrets']:
+        if form_data.get('secrets', False):
             headers.append(_('Secret'))
 
         headers.append(_('Email'))
@@ -603,7 +602,7 @@ class CSVCheckinList(CheckInListMixin, ListExporter):
                 ]
                 if cl.include_pending:
                     row.append(_('Yes') if op.order.status == Order.STATUS_PAID else _('No'))
-                if form_data['secrets']:
+                if form_data.get('secrets', False):
                     row.append(op.secret)
                 row.append(op.attendee_email or (op.addon_to.attendee_email if op.addon_to else '') or op.order.email or '')
                 row.append(str(op.order.phone) if op.order.phone else '')

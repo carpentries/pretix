@@ -7,9 +7,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-01-26 09:10+0000\n"
-"PO-Revision-Date: 2026-02-06 07:41+0000\n"
-"Last-Translator: Ryo Tagami <rtagami@airstrip.jp>\n"
+"POT-Creation-Date: 2026-04-28 09:04+0000\n"
+"PO-Revision-Date: 2026-05-12 06:34+0000\n"
+"Last-Translator: Yasunobu YesNo Kawaguchi <kawaguti@gmail.com>\n"
 "Language-Team: Japanese <https://translate.pretix.eu/projects/pretix/pretix-"
 "js/ja/>\n"
 "Language: ja\n"
@@ -17,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 5.15.2\n"
+"X-Generator: Weblate 5.17.1\n"
 
 #: pretix/plugins/banktransfer/static/pretixplugins/banktransfer/ui.js:56
 #: pretix/plugins/banktransfer/static/pretixplugins/banktransfer/ui.js:62
@@ -59,8 +59,8 @@ msgid "PayPal Pay Later"
 msgstr "PayPal後払い"
 
 #: pretix/plugins/paypal2/static/pretixplugins/paypal2/pretix-paypal.js:41
-msgid "iDEAL"
-msgstr "iDEAL"
+msgid "iDEAL | Wero"
+msgstr "iDEAL | Wero"
 
 #: pretix/plugins/paypal2/static/pretixplugins/paypal2/pretix-paypal.js:42
 msgid "SEPA Direct Debit"
@@ -256,7 +256,7 @@ msgstr "承認保留中"
 
 #: pretix/plugins/webcheckin/static/pretixplugins/webcheckin/main.js:48
 msgid "Redeemed"
-msgstr "使用済"
+msgstr "引き換え済み"
 
 #: pretix/plugins/webcheckin/static/pretixplugins/webcheckin/main.js:49
 msgid "Cancel"
@@ -355,7 +355,7 @@ msgstr "いいえ"
 msgid "close"
 msgstr "閉じる"
 
-#: pretix/static/pretixbase/js/addressform.js:101
+#: pretix/static/pretixbase/js/addressform.js:108
 #: pretix/static/pretixpresale/js/ui/main.js:529
 msgid "required"
 msgstr "必須"
@@ -370,7 +370,8 @@ msgstr ""
 
 #: pretix/static/pretixbase/js/asynctask.js:17
 msgid "Your request has been queued on the server and will soon be processed."
-msgstr "お客様のリクエストはサーバーで受け付けられました。まもなく処理されます。"
+msgstr ""
+"お客様のリクエストはサーバーで受け付けられました。まもなく処理されます。"
 
 #: pretix/static/pretixbase/js/asynctask.js:21
 msgid ""
@@ -393,7 +394,8 @@ msgstr "{code} のエラーが発生しました。"
 msgid ""
 "We currently cannot reach the server, but we keep trying. Last error code: "
 "{code}"
-msgstr "現在サーバへの接続ができませんが、接続試行中です。最新のエラーコード: {code}"
+msgstr ""
+"現在サーバへの接続ができませんが、接続試行中です。最新のエラーコード: {code}"
 
 #: pretix/static/pretixbase/js/asynctask.js:162
 #: pretix/static/pretixcontrol/js/ui/mail.js:21
@@ -417,8 +419,8 @@ msgid ""
 "than one minute, please check your internet connection and then reload this "
 "page and try again."
 msgstr ""
-"現在リクエストをサーバへ送信中です。１分以上経っても応答がない場合は、"
-"インターネット接続を確認し、このページを再読み込みして再試行してください。"
+"現在リクエストをサーバへ送信中です。１分以上経っても応答がない場合は、イン"
+"ターネット接続を確認し、このページを再読み込みして再試行してください。"
 
 #: pretix/static/pretixbase/js/asynctask.js:276
 msgid "If this takes longer than a few minutes, please contact us."
@@ -456,11 +458,11 @@ msgstr "="
 
 #: pretix/static/pretixcontrol/js/ui/checkinrules.js:99
 msgid "Product"
-msgstr "商品"
+msgstr "製品"
 
 #: pretix/static/pretixcontrol/js/ui/checkinrules.js:103
 msgid "Product variation"
-msgstr "商品バリエーション"
+msgstr "製品バリエーション"
 
 #: pretix/static/pretixcontrol/js/ui/checkinrules.js:107
 msgid "Gate"
@@ -570,7 +572,7 @@ msgstr "未入場"
 
 #: pretix/static/pretixcontrol/js/ui/checkinrules.js:289
 msgid "Error: Product not found!"
-msgstr "エラー:商品が見つかりません!"
+msgstr "エラー:製品が見つかりません!"
 
 #: pretix/static/pretixcontrol/js/ui/checkinrules.js:296
 msgid "Error: Variation not found!"
@@ -641,62 +643,62 @@ msgstr "メッセージを作成中…"
 msgid "Unknown error."
 msgstr "不明なエラー。"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:309
+#: pretix/static/pretixcontrol/js/ui/main.js:310
 msgid "Your color has great contrast and will provide excellent accessibility."
 msgstr ""
-"選択した色は素晴らしいコントラストを持ち、優れたアクセシビリティを提供します"
-"。"
+"選択した色は素晴らしいコントラストを持ち、優れたアクセシビリティを提供しま"
+"す。"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:313
+#: pretix/static/pretixcontrol/js/ui/main.js:314
 msgid ""
 "Your color has decent contrast and is sufficient for minimum accessibility "
 "requirements."
 msgstr ""
-"選択した色は適切なコントラストを持ち、最小限のアクセシビリティ要件に十分です"
-"。"
+"選択した色は適切なコントラストを持ち、最小限のアクセシビリティ要件に十分で"
+"す。"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:317
+#: pretix/static/pretixcontrol/js/ui/main.js:318
 msgid ""
 "Your color has insufficient contrast to white. Accessibility of your site "
 "will be impacted."
 msgstr ""
-"選択した色は白に対して十分なコントラストがありません。サイトの"
-"アクセシビリティに影響します。"
+"選択した色は白に対して十分なコントラストがありません。サイトのアクセシビリ"
+"ティに影響します。"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:443
-#: pretix/static/pretixcontrol/js/ui/main.js:463
+#: pretix/static/pretixcontrol/js/ui/main.js:446
+#: pretix/static/pretixcontrol/js/ui/main.js:466
 msgid "Search query"
 msgstr "検索クエリ"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:461
+#: pretix/static/pretixcontrol/js/ui/main.js:464
 msgid "All"
 msgstr "全て"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:462
+#: pretix/static/pretixcontrol/js/ui/main.js:465
 msgid "None"
 msgstr "なし"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:466
+#: pretix/static/pretixcontrol/js/ui/main.js:469
 msgid "Selected only"
 msgstr "選択したもののみ"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:839
+#: pretix/static/pretixcontrol/js/ui/main.js:842
 msgid "Enter page number between 1 and %(max)s."
 msgstr "1以上%(max)s以下のページ番号を入力。"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:842
+#: pretix/static/pretixcontrol/js/ui/main.js:845
 msgid "Invalid page number."
 msgstr "無効なページ番号。"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:1000
+#: pretix/static/pretixcontrol/js/ui/main.js:1003
 msgid "Use a different name internally"
 msgstr "内部で別の名前を使用する"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:1040
+#: pretix/static/pretixcontrol/js/ui/main.js:1043
 msgid "Click to close"
 msgstr "クリックして閉じる"
 
-#: pretix/static/pretixcontrol/js/ui/main.js:1121
+#: pretix/static/pretixcontrol/js/ui/main.js:1124
 msgid "You have unsaved changes!"
 msgstr "保存されていない変更があります！"
 
@@ -726,8 +728,8 @@ msgid ""
 "The items in your cart are no longer reserved for you. You can still "
 "complete your order as long as they’re available."
 msgstr ""
-"カート内の商品の確保期限が切れました。在庫があれば、このまま注文を完了するこ"
-"とができます。"
+"カート内のアイテムの予約が解除されました。在庫がある限り、引き続き注文を完了"
+"できます。"
 
 #: pretix/static/pretixpresale/js/ui/cart.js:49
 msgid "Cart expired"
@@ -741,7 +743,7 @@ msgstr "カートの有効期限が近づいています。"
 #: pretix/static/pretixpresale/js/ui/cart.js:62
 msgid "The items in your cart are reserved for you for one minute."
 msgid_plural "The items in your cart are reserved for you for {num} minutes."
-msgstr[0] "カート内の商品はあと {num} 分間確保されています。"
+msgstr[0] "カート内の製品はあと {num} 分間確保されています。"
 
 #: pretix/static/pretixpresale/js/ui/cart.js:83
 msgid "Your cart has expired."
@@ -752,7 +754,7 @@ msgid ""
 "The items in your cart are no longer reserved for you. You can still "
 "complete your order as long as they're available."
 msgstr ""
-"カート内の商品の確保期限が切れました。在庫があれば、このまま注文を完了するこ"
+"カート内の製品の確保期限が切れました。在庫があれば、このまま注文を完了するこ"
 "とができます。"
 
 #: pretix/static/pretixpresale/js/ui/cart.js:87
@@ -985,7 +987,7 @@ msgid ""
 "You currently have an active cart for this event. If you select more "
 "products, they will be added to your existing cart."
 msgstr ""
-"このイベントのカートに商品が入っています。商品を追加すると、既存のカートに追"
+"このイベントのカートに製品が入っています。製品を追加すると、既存のカートに追"
 "加されます。"
 
 #: pretix/static/pretixpresale/js/widget/widget.js:57
@@ -1197,6 +1199,9 @@ msgstr "１１月"
 #: pretix/static/pretixpresale/js/widget/widget.js:105
 msgid "December"
 msgstr "１２月"
+
+#~ msgid "iDEAL"
+#~ msgstr "iDEAL"
 
 #~ msgid "Time zone:"
 #~ msgstr "タイムゾーン："

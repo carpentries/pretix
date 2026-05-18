@@ -87,7 +87,6 @@ from pretix.base.timemachine import time_machine_now
 
 from ...helpers import OF_SELF
 from ...helpers.countries import CachedCountries, FastCountryField
-from ...helpers.format import format_map
 from ...helpers.names import build_name
 from ...testutils.middleware import debugflags_var
 from ._transactions import (
@@ -337,8 +336,8 @@ class Order(LockModel, LoggedModel):
         verbose_name_plural = _("Orders")
         ordering = ("-datetime", "-pk")
         indexes = [
-            models.Index(fields=["datetime", "id"]),
-            models.Index(fields=["last_modified", "id"]),
+            models.Index(fields=["datetime", "id"], name="pretixbase__datetim_66aff0_idx"),
+            models.Index(fields=["last_modified", "id"], name="pretixbase__last_mo_4ebf8b_idx"),
         ]
         constraints = [
             models.UniqueConstraint(fields=["organizer", "code"], name="order_organizer_code_uniq"),
@@ -591,7 +590,7 @@ class Order(LockModel, LoggedModel):
             not kwargs.get('force_save_with_deferred_fields', None) and
             (not update_fields or ('require_approval' not in update_fields and 'status' not in update_fields))
         ):
-            _fail("It is unsafe to call save() on an OrderFee with deferred fields since we can't check if you missed "
+            _fail("It is unsafe to call save() on an Order with deferred fields since we can't check if you missed "
                   "creating a transaction. Call save(force_save_with_deferred_fields=True) if you really want to do "
                   "this.")
 
@@ -1167,7 +1166,7 @@ class Order(LockModel, LoggedModel):
                          only be attached for this position and child positions, the link will only point to the
                          position and the attendee email will be used if available.
         """
-        from pretix.base.services.mail import mail, render_mail
+        from pretix.base.services.mail import mail
 
         if not self.email and not (position and position.attendee_email):
             return
@@ -1177,31 +1176,20 @@ class Order(LockModel, LoggedModel):
             if position and position.attendee_email:
                 recipient = position.attendee_email
 
-            email_content = render_mail(template, context)
-            subject = format_map(subject, context)
-            mail(
+            outgoing_mail = mail(
                 recipient, subject, template, context,
                 self.event, self.locale, self, headers=headers, sender=sender,
                 invoices=invoices, attach_tickets=attach_tickets,
                 position=position, auto_email=auto_email, attach_ical=attach_ical,
                 attach_other_files=attach_other_files, attach_cached_files=attach_cached_files,
             )
-            self.log_action(
-                log_entry_type,
-                user=user,
-                auth=auth,
-                data={
-                    'subject': subject,
-                    'message': email_content,
-                    'position': position.positionid if position else None,
-                    'recipient': recipient,
-                    'invoices': [i.pk for i in invoices] if invoices else [],
-                    'attach_tickets': attach_tickets,
-                    'attach_ical': attach_ical,
-                    'attach_other_files': attach_other_files,
-                    'attach_cached_files': [cf.filename for cf in attach_cached_files] if attach_cached_files else [],
-                }
-            )
+            if outgoing_mail:
+                self.log_action(
+                    log_entry_type,
+                    user=user,
+                    auth=auth,
+                    data=outgoing_mail.log_data(),
+                )
 
     def resend_link(self, user=None, auth=None):
         with language(self.locale, self.event.settings.region):
@@ -2855,7 +2843,7 @@ class OrderPosition(AbstractPosition):
             if Transaction.key(self) != self.__initial_transaction_key or self.canceled != self.__initial_canceled or not self.pk:
                 _transactions_mark_order_dirty(self.order_id, using=kwargs.get('using', None))
         elif not kwargs.get('force_save_with_deferred_fields', None):
-            _fail("It is unsafe to call save() on an OrderFee with deferred fields since we can't check if you missed "
+            _fail("It is unsafe to call save() on an OrderPosition with deferred fields since we can't check if you missed "
                   "creating a transaction. Call save(force_save_with_deferred_fields=True) if you really want to do "
                   "this.")
 
@@ -2901,16 +2889,14 @@ class OrderPosition(AbstractPosition):
         :param attach_tickets: Attach tickets of this order, if they are existing and ready to download
         :param attach_ical: Attach relevant ICS files
         """
-        from pretix.base.services.mail import mail, render_mail
+        from pretix.base.services.mail import mail
 
         if not self.attendee_email:
             return
 
         with language(self.order.locale, self.order.event.settings.region):
             recipient = self.attendee_email
-            email_content = render_mail(template, context)
-            subject = format_map(subject, context)
-            mail(
+            outgoing_mail = mail(
                 recipient, subject, template, context,
                 self.event, self.order.locale, order=self.order, headers=headers, sender=sender,
                 position=self,
@@ -2919,21 +2905,13 @@ class OrderPosition(AbstractPosition):
                 attach_ical=attach_ical,
                 attach_other_files=attach_other_files,
             )
-            self.order.log_action(
-                log_entry_type,
-                user=user,
-                auth=auth,
-                data={
-                    'subject': subject,
-                    'message': email_content,
-                    'recipient': recipient,
-                    'invoices': [i.pk for i in invoices] if invoices else [],
-                    'attach_tickets': attach_tickets,
-                    'attach_ical': attach_ical,
-                    'attach_other_files': attach_other_files,
-                    'attach_cached_files': [],
-                }
-            )
+            if outgoing_mail:
+                self.order.log_action(
+                    log_entry_type,
+                    user=user,
+                    auth=auth,
+                    data=outgoing_mail.log_data(),
+                )
 
     def resend_link(self, user=None, auth=None):
 
@@ -3104,7 +3082,7 @@ class Transaction(models.Model):
     class Meta:
         ordering = 'datetime', 'pk'
         indexes = [
-            models.Index(fields=['datetime', 'id'])
+            models.Index(fields=['datetime', 'id'], name="pretixbase__datetim_b20405_idx")
         ]
 
     def save(self, *args, **kwargs):

@@ -32,6 +32,7 @@ ausgecheckt
 ausgeklappt
 auswahl
 Authentication
+Authenticator
 Authenticator-App
 Autorisierungscode
 Autorisierungs-Endpunktes
@@ -130,6 +131,7 @@ Eingangsscan
 Einlassbuchung
 Einlassdatum
 Einlasskontrolle
+Einmalpasswörter
 einzuchecken
 email
 E-Mail-Renderer
@@ -163,6 +165,7 @@ Explorer
 FA
 Favicon
 F-Droid
+freeOTP
 Footer
 Footer-Link
 Footer-Text
@@ -265,6 +268,7 @@ Objekt-IDs
 Offline-Scan
 OK
 Online-Banking
+Online-Banking-Nutzer
 Onlinebanking
 Onlinebanking-Zugangsdaten
 Open
@@ -298,6 +302,7 @@ Personalisierung
 P.IVA
 PKCE-Erweiterung
 Platzhalterzeichen
+PLN
 Play
 Plugin
 Plugins
@@ -539,6 +544,9 @@ WeChat-Zahlung
 Weiterleitungs-URIs
 Weiterleitungs-URL
 Weiterleitungs-URLs
+Wero
+WERO
+WERO-App
 WhatsApp
 Widget
 Widget-Code
@@ -553,6 +561,7 @@ Zahlungs-ID
 Zahlungspflichtig
 Zehnerkarten
 Zeitbasiert
+zeitbasierte
 Zeitslotbuchung
 Zimpler
 ZIP-Datei

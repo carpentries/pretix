@@ -119,7 +119,39 @@ def test_medium_list(token_client, organizer, event, medium):
 
 
 @pytest.mark.django_db
-def test_medium_detail(token_client, organizer, event, medium, giftcard, customer):
+def test_medium_detail_permission_missing(token_client, organizer, event, medium, giftcard, customer, team):
+    team.all_organizer_permissions = False
+    team.limit_organizer_permissions = {
+        "organizer.reusablemedia:read": True,
+    }
+    team.save()
+    resp = token_client.get(
+        '/api/v1/organizers/{}/reusablemedia/{}/?expand=linked_giftcard'.format(
+            organizer.slug, medium.pk
+        )
+    )
+    assert resp.status_code == 403
+    assert "No permission to access gift card details." in str(resp.data)
+
+    resp = token_client.get(
+        '/api/v1/organizers/{}/reusablemedia/{}/?expand=customer'.format(
+            organizer.slug, medium.pk
+        )
+    )
+    assert resp.status_code == 403
+    assert "No permission to access customer details." in str(resp.data)
+
+
+@pytest.mark.django_db
+def test_medium_detail(token_client, organizer, event, medium, giftcard, customer, team):
+    team.all_organizer_permissions = False
+    team.limit_organizer_permissions = {
+        "organizer.reusablemedia:read": True,
+        "organizer.customers:read": True,
+        "organizer.giftcards:read": True,
+    }
+    team.save()
+
     res = dict(TEST_MEDIUM_RES)
     res["id"] = medium.pk
     res["created"] = medium.created.isoformat().replace('+00:00', 'Z')
@@ -217,6 +249,76 @@ def test_medium_detail(token_client, organizer, event, medium, giftcard, custome
             "conditions": None,
             "owner_ticket": resp.data["linked_orderposition"],
             "issuer": "dummy",
+        }
+
+
+@pytest.mark.django_db
+def test_medium_detail_event_permission_missing(token_client, organizer, event, medium, giftcard, customer, team):
+    team.all_organizer_permissions = False
+    team.limit_organizer_permissions = {
+        "organizer.reusablemedia:read": True,
+        "organizer.customers:read": True,
+        "organizer.giftcards:read": True,
+    }
+    team.all_event_permissions = False
+    team.save()
+
+    with scopes_disabled():
+        o = Order.objects.create(
+            code='FOO', event=event, email='dummy@dummy.test',
+            status=Order.STATUS_PENDING, datetime=now(), expires=now() + timedelta(days=10),
+            sales_channel=event.organizer.sales_channels.get(identifier="web"),
+            total=14, locale='en'
+        )
+        ticket = event.items.create(name='Early-bird ticket', category=None, default_price=23, admission=True,
+                                    personalized=True)
+        op = o.positions.create(item=ticket, price=Decimal("14"))
+        medium.linked_orderposition = op
+        medium.linked_giftcard = giftcard
+        medium.customer = customer
+        medium.save()
+        giftcard.owner_ticket = op
+        giftcard.save()
+
+        resp = token_client.get(
+            '/api/v1/organizers/{}/reusablemedia/{}/?expand=linked_giftcard&expand='
+            'linked_giftcard.owner_ticket&expand=linked_orderposition&expand=customer'.format(
+                organizer.slug, medium.pk
+            )
+        )
+        assert resp.status_code == 200
+
+        assert resp.data["linked_orderposition"] == {
+            "id": op.pk,
+        }
+
+        assert resp.data["linked_giftcard"] == {
+            "id": giftcard.pk,
+            "secret": "ABCDEF",
+            "issuance": giftcard.issuance.isoformat().replace("+00:00", "Z"),
+            "value": "23.00",
+            "currency": "EUR",
+            "testmode": False,
+            "expires": None,
+            "conditions": None,
+            "owner_ticket": {"id": op.pk},
+            "issuer": "dummy",
+        }
+
+        assert resp.data["customer"] == {
+            "identifier": customer.identifier,
+            "external_identifier": None,
+            "email": "foo@example.org",
+            "phone": None,
+            "name": "Foo",
+            "name_parts": {"_legacy": "Foo"},
+            "is_active": True,
+            "is_verified": False,
+            "last_login": None,
+            "date_joined": customer.date_joined.isoformat().replace("+00:00", "Z"),
+            "locale": "en",
+            "last_modified": customer.last_modified.isoformat().replace("+00:00", "Z"),
+            "notes": None
         }
 
 
@@ -340,7 +442,16 @@ def test_medium_lookup_not_found(token_client, organizer, organizer2, medium):
 
 
 @pytest.mark.django_db
-def test_medium_lookup_autocreate(token_client, organizer):
+def test_medium_lookup_autocreate(token_client, organizer, team):
+    team.all_organizer_permissions = False
+    team.limit_organizer_permissions = {
+        "organizer.reusablemedia:read": True,
+        "organizer.reusablemedia:write": True,
+        "organizer.customers:read": True,
+        "organizer.giftcards:read": True,
+    }
+    team.save()
+
     # Disabled
     resp = token_client.post(
         '/api/v1/organizers/{}/reusablemedia/lookup/'.format(organizer.slug),
@@ -386,7 +497,15 @@ def test_medium_lookup_autocreate(token_client, organizer):
 
 
 @pytest.mark.django_db
-def test_medium_autocreate_giftcard(token_client, organizer):
+def test_medium_autocreate_giftcard(token_client, organizer, team):
+    team.all_organizer_permissions = False
+    team.limit_organizer_permissions = {
+        "organizer.reusablemedia:write": True,
+        "organizer.reusablemedia:read": True,
+        "organizer.customers:read": True,
+        "organizer.giftcards:read": True,
+    }
+    team.save()
     organizer.settings.reusable_media_type_nfc_mf0aes_autocreate_giftcard = True
     organizer.settings.reusable_media_type_nfc_mf0aes_autocreate_giftcard_currency = 'USD'
     resp = token_client.post(

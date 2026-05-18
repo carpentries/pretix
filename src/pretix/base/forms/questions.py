@@ -45,7 +45,6 @@ import pycountry
 from django import forms
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.gis.geoip2 import GeoIP2
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.validators import (
@@ -91,7 +90,7 @@ from pretix.base.settings import (
     COUNTRIES_WITH_STATE_IN_ADDRESS, COUNTRY_STATE_LABEL,
     PERSON_NAME_SALUTATIONS, PERSON_NAME_SCHEMES, PERSON_NAME_TITLE_GROUPS,
 )
-from pretix.base.templatetags.rich_text import rich_text
+from pretix.base.templatetags.rich_text import URL_RE, rich_text
 from pretix.base.timemachine import time_machine_now
 from pretix.control.forms import (
     ExtFileField, ExtValidationMixin, SizeValidationMixin, SplitDateTimeField,
@@ -102,6 +101,7 @@ from pretix.helpers.countries import (
 from pretix.helpers.escapejson import escapejson_attr
 from pretix.helpers.http import get_client_ip
 from pretix.helpers.i18n import get_format_without_seconds
+from pretix.helpers.security import get_geoip
 from pretix.presale.signals import question_form_fields
 
 logger = logging.getLogger(__name__)
@@ -227,9 +227,15 @@ class NamePartsFormField(forms.MultiValueField):
                     # bots.
                     r'^[^$€/%§{}<>~]*$',
                     message=_('Please do not use special characters in names.')
+                ),
+                RegexValidator(
+                    URL_RE,
+                    inverse_match=True,
+                    message=_('Please do not use special characters in names.')
                 )
             ]
         }
+        self.max_length = defaults['max_length']
         self.scheme_name = kwargs.pop('scheme')
         self.titles = kwargs.pop('titles')
         self.scheme = PERSON_NAME_SCHEMES.get(self.scheme_name)
@@ -287,7 +293,7 @@ class NamePartsFormField(forms.MultiValueField):
         if self.require_all_fields and not all(v for v in value):
             raise forms.ValidationError(self.error_messages['incomplete'], code='required')
 
-        if sum(len(v) for v in value.values() if v) > 250:
+        if sum(len(v) for v in value.values() if v) > (self.max_length or 250):
             raise forms.ValidationError(_('Please enter a shorter name.'), code='max_length')
 
         if value.get("salutation") == "empty":
@@ -393,7 +399,7 @@ class WrappedPhoneNumberPrefixWidget(PhoneNumberPrefixWidget):
 
 def guess_country_from_request(request, event):
     if settings.HAS_GEOIP:
-        g = GeoIP2()
+        g = get_geoip()
         try:
             res = g.country(get_client_ip(request))
             if res['country_code'] and len(res['country_code']) == 2:
@@ -1415,6 +1421,7 @@ class BaseInvoiceAddressForm(forms.ModelForm):
                     if not data.get(r):
                         raise ValidationError({r: _("This field is required for the selected type of invoice transmission.")})
 
+                transmission_type.validate_invoice_address_data(data)
                 self.instance.transmission_type = transmission_type.identifier
                 self.instance.transmission_info = transmission_type.form_data_to_transmission_info(data)
             elif transmission_type.is_exclusive(self.event, data.get("country"), data.get("is_business")):

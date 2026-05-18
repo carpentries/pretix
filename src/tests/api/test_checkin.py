@@ -252,19 +252,6 @@ TEST_HISTORY_RES = {
 }
 
 
-@pytest.fixture
-def clist(event, item):
-    c = event.checkin_lists.create(name="Default", all_products=False)
-    c.limit_products.add(item)
-    return c
-
-
-@pytest.fixture
-def clist_all(event, item):
-    c = event.checkin_lists.create(name="Default", all_products=True)
-    return c
-
-
 @pytest.mark.django_db
 def test_list_list(token_client, organizer, event, clist, item, subevent, django_assert_num_queries):
     res = dict(TEST_LIST_RES)
@@ -1178,6 +1165,30 @@ def test_store_failed(token_client, organizer, clist, event, order):
 
 
 @pytest.mark.django_db
+def test_store_failed_after_success(token_client, organizer, clist, event, order):
+    with scopes_disabled():
+        p = order.positions.first()
+        p.all_checkins.create(
+            type=Checkin.TYPE_ENTRY,
+            nonce='foobar',
+            successful=True,
+            list=clist,
+            raw_barcode=p.secret
+        )
+    resp = token_client.post('/api/v1/organizers/{}/events/{}/checkinlists/{}/failed_checkins/'.format(
+        organizer.slug, event.slug, clist.pk,
+    ), {
+        'raw_barcode': p.secret,
+        'nonce': 'foobar',
+        'position': p.pk,
+        'error_reason': 'unpaid'
+    }, format='json')
+    assert resp.status_code == 201
+    with scopes_disabled():
+        assert Checkin.all.filter(position=p).count() == 2
+
+
+@pytest.mark.django_db
 def test_redeem_unknown(token_client, organizer, clist, event, order):
     resp = _redeem(token_client, organizer, clist, 'unknown_secret', {'force': True})
     assert resp.status_code == 404
@@ -1358,9 +1369,8 @@ def test_checkin_pdf_data_requires_permission(token_client, event, team, organiz
     ))
     assert resp.data['results'][0].get('pdf_data')
     with scopes_disabled():
-        team.can_view_orders = False
-        team.can_change_orders = False
-        team.can_checkin_orders = True
+        team.limit_event_permissions = {"event.orders:checkin": True}
+        team.all_event_permissions = False
         team.save()
     resp = token_client.get('/api/v1/organizers/{}/events/{}/checkinlists/{}/positions/?search=z3fsn8jyu&pdf_data=true'.format(
         organizer.slug, event.slug, clist_all.pk
