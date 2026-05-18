@@ -261,50 +261,50 @@ class CheckInListBulkActionView(CheckInListQueryMixin, EventPermissionRequiredMi
             if not request.user.has_event_permission(request.organizer, request.event, 'event.orders:write', request=request):
                 raise PermissionDenied()
 
-                selected_checkins = request.POST.getlist('session-checkin')
+            selected_checkins = request.POST.getlist('session-checkin')
 
-                if selected_checkins:
-                    for checkin_pks in selected_checkins:
-                        try:
-                            position_pk, session_block_pk = checkin_pks.split('_')
-                            position_pk = int(position_pk)
-                            session_block_pk = int(session_block_pk)
+            if selected_checkins:
+                for checkin_pks in selected_checkins:
+                    try:
+                        position_pk, session_block_pk = checkin_pks.split('_')
+                        position_pk = int(position_pk)
+                        session_block_pk = int(session_block_pk)
 
-                            op = OrderPosition.objects.get(
-                                pk=position_pk,
-                                order__event=request.event
-                            )
+                        op = OrderPosition.objects.get(
+                            pk=position_pk,
+                            order__event=request.event
+                        )
 
-                            session_block = SubEventSessionBlock.objects.get(
-                                pk=session_block_pk,
-                                subevent=self.list.subevent
-                            )
-                            _, deleted = Checkin.objects.filter(position=op, list=self.list, session_block=session_block).delete()
-                            if deleted:
-                                op.order.log_action('pretix.event.checkin.reverted', data={
-                                    'position': op.id,
-                                    'positionid': op.positionid,
-                                    'list': self.list.pk,
-                                    'web': True
-                                }, user=request.user)
-                                op.order.touch()
-                        except ((ValueError, AttributeError, SubEventSessionBlock.DoesNotExist, OrderPosition.DoesNotExist)):
-                            continue
-                else:
-                    for op in positions:
+                        session_block = SubEventSessionBlock.objects.get(
+                            pk=session_block_pk,
+                            subevent=self.list.subevent
+                        )
+                        _, deleted = Checkin.objects.filter(position=op, list=self.list, session_block=session_block).delete()
+                        if deleted:
+                            op.order.log_action('pretix.event.checkin.reverted', data={
+                                'position': op.id,
+                                'positionid': op.positionid,
+                                'list': self.list.pk,
+                                'web': True
+                            }, user=request.user)
+                            op.order.touch()
+                    except ((ValueError, AttributeError, SubEventSessionBlock.DoesNotExist, OrderPosition.DoesNotExist)):
+                        continue
+            else:
+                for op in positions:
 
-                        if op.order.status == Order.STATUS_PAID or (
-                            (self.list.include_pending or op.order.valid_if_pending) and op.order.status == Order.STATUS_PENDING
-                        ):
-                            _, deleted = Checkin.objects.filter(position=op, list=self.list).delete()
-                            if deleted:
-                                op.order.log_action('pretix.event.checkin.reverted', data={
-                                    'position': op.id,
-                                    'positionid': op.positionid,
-                                    'list': self.list.pk,
-                                    'web': True
-                                }, user=request.user)
-                                op.order.touch()
+                    if op.order.status == Order.STATUS_PAID or (
+                        (self.list.include_pending or op.order.valid_if_pending) and op.order.status == Order.STATUS_PENDING
+                    ):
+                        _, deleted = Checkin.objects.filter(position=op, list=self.list).delete()
+                        if deleted:
+                            op.order.log_action('pretix.event.checkin.reverted', data={
+                                'position': op.id,
+                                'positionid': op.positionid,
+                                'list': self.list.pk,
+                                'web': True
+                            }, user=request.user)
+                            op.order.touch()
 
             return 'reverted', request.POST.get('returnquery')
         else:
@@ -667,6 +667,7 @@ class CheckInListSimulator(EventPermissionRequiredMixin, FormView):
             legacy_url_support=False,
             simulate=True,
             gate=form.cleaned_data.get("gate"),
+            session_block=form.cleaned_data.get("session_block"),
         ).data
 
         if self.result.get("position"):
