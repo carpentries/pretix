@@ -574,9 +574,26 @@ $(function () {
         if (t.tz(tz.name).format() !== t.tz(local_tz).format()) {
             var format = t.tz(tz.name).format("YYYY-MM-DD") != t.tz(local_tz).format("YYYY-MM-DD") ? "datetimeformat" : "timeformat";
             var time_str = t.tz(local_tz).format($("body").data(format));
-            var $add = $("<small>").addClass("text-muted").append(" (" + gettext("Your local time:") + " ")
-            $add.append($('<time>').attr("datetime", time_str).text(time_str))
-            $add.append(" " + moment.tz.zone(local_tz).abbr(t) + ")");
+            var $add = $("<small>").addClass("text-muted");
+
+            if ($(this).is("[data-time-short]")) {
+                $add.append($('<span>').attr("class", "fa fa-globe").attr("aria-hidden", "true"));
+                $add.append($('<time>').attr("datetime", time_str).text(time_str));
+
+                if ($(this).is("[data-time-to]")) {
+                    var to_t = moment.tz($(this).attr("data-time-to"), $(this).attr("data-timezone"));
+                    var time_str_to = to_t.tz(local_tz).format($("body").data(format));
+                    $add.append($('<span>').attr("class", "sr-only").text("until"));
+                    $add.append($('<span>').attr("aria-hidden", "true").text(" - "));
+                    $add.append($('<time>').attr("datetime", time_str_to).text(time_str_to));
+                }
+                $add.append(" " + moment.tz.zone(local_tz).abbr(t));
+            }
+            else {
+                $add.append(" (" + gettext("Your local time:") + " ");
+                $add.append($('<time>').attr("datetime", time_str).text(time_str));
+                $add.append(" " + moment.tz.zone(local_tz).abbr(t) + ")");
+            }
             $add.insertAfter($(this));
         }
     });

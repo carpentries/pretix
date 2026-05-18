@@ -7,7 +7,7 @@
         <h2 class="panel-title">
             <span>
                 <i class="fa fa-info" aria-hidden="true"></i>
-                <strong>Event Information</strong>
+                <strong>{% if title %}{{ title }}{% else %}{% trans "Event Information" %}{% endif %}</strong>
             </span>
         </h2>
     </summary>

@@ -91,8 +91,8 @@ class SubEventSessionBlockFormSet(I18nInlineFormSet): # forms.BaseInlineFormSet)
         super().__init__(*args, **kwargs)
 
     def _construct_form(self, i, **kwargs):
-        kwargs['locales'] = self.locales
         kwargs['event'] = self.event
+        kwargs['locales'] = self.locales
         return super()._construct_form(i, **kwargs)
 
     @property
@@ -102,7 +102,8 @@ class SubEventSessionBlockFormSet(I18nInlineFormSet): # forms.BaseInlineFormSet)
             prefix=self.add_prefix('__prefix__'),
             empty_permitted=True,
             use_required_attribute=False,
-            event=self.event,
+            locales=self.locales,
+            event=self.event
         )
         self.add_fields(form, None)
         return form

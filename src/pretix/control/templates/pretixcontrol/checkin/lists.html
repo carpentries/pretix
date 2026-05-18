@@ -101,7 +101,13 @@
                         <a href="?{% url_replace request 'ordering' 'name' %}"><i class="fa fa-caret-up"></i></a>
                     </th>
                     {% if "event.orders:read" in request.eventpermset %}
-                        <th>{% trans "Checked in" %}</th>
+                        {% if request.event.has_subevents %}
+                            {% if cl.subevent %}
+                                {% if not cl.subevent.has_session_blocks %}
+                                    <th>{% trans "Checked in" %}</th>
+                                {% endif %}
+                            {% endif %}
+                        {% endif %}
                     {% endif %}
                     {% if request.event.has_subevents %}
                         <th>
@@ -122,18 +128,24 @@
                                     href="{% url "control:event.orders.checkinlists.show" organizer=request.event.organizer.slug event=request.event.slug list=cl.id %}">{{ cl.name }}</a></strong>
                         </td>
                         {% if "event.orders:read" in request.eventpermset %}
-                            <td>
-                                <div class="quotabox availability">
-                                    <div class="progress">
-                                        <div class="progress-bar progress-bar-success progress-bar-{{ cl.percent }}">
-                                        </div>
-                                    </div>
-                                    <div class="numbers">
-                                        {{ cl.checkin_count|default_if_none:"0" }} /
-                                        {{ cl.position_count|default_if_none:"0" }}
-                                    </div>
-                                </div>
-                            </td>
+                            {% if request.event.has_subevents %}
+                                {% if cl.subevent %}
+                                    {% if not cl.subevent.has_session_blocks %}
+                                        <td>
+                                            <div class="quotabox availability">
+                                                <div class="progress">
+                                                    <div class="progress-bar progress-bar-success progress-bar-{{ cl.percent }}">
+                                                    </div>
+                                                </div>
+                                                <div class="numbers">
+                                                    {{ cl.checkin_count|default_if_none:"0" }} /
+                                                    {{ cl.position_count|default_if_none:"0" }}
+                                                </div>
+                                            </div>
+                                        </td>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
                         {% endif %}
                         {% if request.event.has_subevents %}
                             {% if cl.subevent %}
