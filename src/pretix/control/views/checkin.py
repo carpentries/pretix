@@ -72,6 +72,9 @@ from pretix.control.views import CreateView, PaginationMixin, UpdateView
 from pretix.helpers.compat import CompatDeleteView
 from pretix.helpers.models import modelcopy
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class CheckInListQueryMixin:
 
@@ -187,10 +190,12 @@ class CheckInListShow(EventPermissionRequiredMixin, PaginationMixin, CheckInList
                 self.list.subevent.seating_plan_id if self.list.subevent
                 else self.request.event.subevents.filter(seating_plan__isnull=False).exists()
             )
+            if self.list.subevent.has_session_blocks:
+                ctx['session_blocks'] = self.list.subevent.session_blocks.all()
         else:
             ctx['seats'] = self.request.event.seating_plan_id
         ctx['filter_form'] = self.filter_form
-        for e in ctx['entries']:
+        for e in ctx['entries']: # checkin object
             if e.last_entry:
                 if isinstance(e.last_entry, str):
                     # Apparently only happens on SQLite
@@ -212,12 +217,14 @@ class CheckInListShow(EventPermissionRequiredMixin, PaginationMixin, CheckInList
                     # This would be correct, so guess on which database it works… Yes, it's PostgreSQL.
                     e.last_exit_aware = e.last_exit
 
-        if self.list.subevent.has_session_blocks:
-            ctx['session_blocks'] = self.list.subevent.session_blocks.all()
-
-            # set the checkins for each session_block from the prefetched session_checkins
-            for session_block in ctx['session_blocks']:
-                session_block.last_session_checkin = [ci for ci in e.session_checkins if ci.session_block_id == session_block.pk]
+            # populate the most recent checkins for each given position (entry) session block, if any
+            e.checkin_by_block = [
+                (block, next(
+                    (c for c in e.session_checkins if c.session_block_id == block.id),
+                    None
+                ))
+                for block in ctx['session_blocks']
+            ]
 
         return ctx
 
@@ -329,20 +336,26 @@ class CheckInListBulkActionView(CheckInListQueryMixin, EventPermissionRequiredMi
                             subevent=self.list.subevent
                         )
 
+                        #  raise Exception(f"Debug: {op} ::: {session_block}")
+
                         if op.order.status == Order.STATUS_PAID or (
                             (self.list.include_pending or op.order.valid_if_pending) and op.order.status == Order.STATUS_PENDING
                         ):
-                            lci = op.checkins.filter(list=self.list).first()
-                            if self.list.allow_multiple_entries or t != Checkin.TYPE_ENTRY or (lci and lci.type != Checkin.TYPE_ENTRY):
-                                ci = Checkin.objects.create(position=op, list=self.list, datetime=now(), type=t, session_block=session_block)
-                                created = True
-                            else:
-                                try:
-                                    ci, created = Checkin.objects.get_or_create(position=op, list=self.list, session_block=session_block, defaults={
-                                        'datetime': now(),
-                                    })
-                                except Checkin.MultipleObjectsReturned:
-                                    ci, created = Checkin.objects.filter(position=op, list=self.list, session_block=session_block).first(), False
+                            #lci = op.checkins.filter(list=self.list).first()
+                            #if self.list.allow_multiple_entries or t != Checkin.TYPE_ENTRY or (lci and lci.type != Checkin.TYPE_ENTRY):
+                            ci = Checkin.objects.create(position=op, list=self.list, datetime=now(), type=t, session_block=session_block)
+                            created = True
+
+                            # raise Exception(f"Debug: {ci.id} ::: {ci.position.id} ::: {op.id} ::: {session_block.id} ::: {self.list.pk}")
+                            # 53, 1, 1, 1, 2
+                            #else:
+                                #try:
+                            #ci, created = Checkin.objects.create(position=op, list=self.list, session_block=session_block, defaults={
+                            #    'datetime': now(),
+                            #})
+
+                                #except Checkin.MultipleObjectsReturned:
+                                #    ci, created = Checkin.objects.filter(position=op, list=self.list, session_block=session_block).first(), False
 
                             op.order.log_action('pretix.event.checkin', data={
                                 'position': op.id,
@@ -352,11 +365,11 @@ class CheckInListBulkActionView(CheckInListQueryMixin, EventPermissionRequiredMi
                                 'datetime': now(),
                                 'type': t,
                                 'list': self.list.pk,
-                                'web': True
+                                'web': True,
+                                'session_block': session_block.id,
                             }, user=request.user)
                             checkin_created.send(op.order.event, checkin=ci)
 
-                            return 'checked-out' if t == Checkin.TYPE_EXIT else 'checked-in', request.POST.get('returnquery')
                     except ((ValueError, AttributeError, SubEventSessionBlock.DoesNotExist, OrderPosition.DoesNotExist)):
                         continue
             else:
@@ -387,7 +400,8 @@ class CheckInListBulkActionView(CheckInListQueryMixin, EventPermissionRequiredMi
                             'web': True
                         }, user=request.user)
                         checkin_created.send(op.order.event, checkin=ci)
-                return 'checked-out' if t == Checkin.TYPE_EXIT else 'checked-in', request.POST.get('returnquery')
+
+            return 'checked-out' if t == Checkin.TYPE_EXIT else 'checked-in', request.POST.get('returnquery')
 
     def get_success_message(self, value):
         if value[0] == 'reverted':

@@ -141,10 +141,9 @@
                                     </td>
                                     <td>{{ e.item }}{% if e.variation %} – {{ e.variation }}{% endif %}</td>
 
-                                    {% for session_block in session_blocks %}
+                                    {% for session_block, ci in e.checkin_by_block %}
                                         <td class="text-center">
-                                        {% with checkin_for_block=session_block.last_session_checkin %}
-                                            {% for ci in checkin_for_block %}
+                                            {% if ci %}
                                                 <input type="checkbox"
                                                     name="session-checkin"
                                                     value="{{ e.pk }}_{{ session_block.pk }}"
@@ -158,13 +157,12 @@
                                                         {% endif %}
                                                     </span>
                                                 </small>
-                                            {% empty %}
+                                            {% else %}
                                                 <input type="checkbox"
                                                     name="session-checkin"
                                                     value="{{ e.pk }}_{{ session_block.pk }}"
                                                     class="checkin-checkbox">
-                                            {% endfor %}
-                                        {% endwith %}
+                                            {% endif %}
                                         </td>
                                     {% endfor %}
                                 </tr>
