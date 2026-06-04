@@ -47,23 +47,17 @@ class SubEventSessionBlockForm(I18nModelForm): #forms.ModelForm):
     class Meta:
         model = SubEventSessionBlock
         fields = ['date_from', 'date_to', 'location']
+        field_classes = {
+            'date_from': SplitDateTimeField,
+            'date_to': SplitDateTimeField,
+        }
         widgets = {
-            'date_from': forms.DateTimeInput(
-                attrs={
-                    'class': 'datetimepicker',
-                    'data-date-format': 'YYYY-MM-DD HH:mm:ss',
-                }
-            ),
-            'date_to': forms.DateTimeInput(
-                attrs={
-                    'class': 'datetimepicker',
-                    'data-date-format': 'YYYY-MM-DD HH:mm:ss',
-                }
-            ),
+            'date_from': SplitDateTimePickerWidget(),
+            'date_to': SplitDateTimePickerWidget(),
             'location': forms.Textarea(
                 attrs={
                     'class': 'form-control',
-                    'rows': 2,
+                    'rows': 1,
                     'placeholder': _('Optional location for this session')
                 }
             ),

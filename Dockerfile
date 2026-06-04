@@ -68,6 +68,10 @@ RUN chmod +x /usr/local/bin/pretix && \
     chown -R pretixuser:pretixuser /pretix /data data &&  \
     sudo -u pretixuser make production
 
+# Fix permissions for nginx
+USER root
+RUN sed -i 's/user www-data www-data;/user pretixuser pretixuser;/' /etc/nginx/nginx.conf
+
 USER pretixuser
 VOLUME ["/etc/pretix", "/data"]
 EXPOSE 80

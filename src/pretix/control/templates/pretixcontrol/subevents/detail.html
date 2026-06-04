@@ -67,10 +67,11 @@
                                     </div>
                                     <div class="panel-heading">
                                         <h4 class="panel-title">
-                                            <div class="row">
+                                            <div class="row form-inline">
                                                 <div class="col-md-10">
                                                     <span class="fa fa-calendar"></span>
                                                     {% if form.instance.pk %}
+                                                        Session {{ forloop.counter }}:
                                                         {{ form.instance.date_from|date:"SHORT_DATETIME_FORMAT" }}
                                                         {% if form.instance.date_to %}
                                                             - {{ form.instance.date_to|date:"SHORT_DATETIME_FORMAT" }}
@@ -133,6 +134,8 @@
                             <button type="button" class="btn btn-default" data-formset-add>
                                 <i class="fa fa-plus"></i> {% trans "Add a new session block" %}
                             </button>
+                            <button type="button" class="btn btn-default" id="subevent_add_many_session_blocks_start">
+                                <i class="fa fa-calendar"></i> {% trans "Add many session blocks" %}</button>
                         </p>
                     </div>
                 </fieldset>
