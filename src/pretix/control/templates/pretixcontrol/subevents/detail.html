@@ -55,7 +55,7 @@
                     <p class="help-block">
                         {% trans "Define multiple session blocks if this event spans multiple non-contiguous time periods (e.g., a 3-day training with sessions on separate days)." %}
                     </p>
-                    <div class="formset" data-formset data-formset-prefix="{{ session_block_formset.prefix }}">
+                    <div class="formset" id="subevent_session_block_formset" data-formset data-formset-prefix="{{ session_block_formset.prefix }}">
                         {{ session_block_formset.management_form }}
                         {% bootstrap_formset_errors session_block_formset %}
                         <div data-formset-body>
@@ -130,13 +130,35 @@
                                 </div>
                             {% endescapescript %}
                         </script>
-                        <p>
-                            <button type="button" class="btn btn-default" data-formset-add>
-                                <i class="fa fa-plus"></i> {% trans "Add a new session block" %}
-                            </button>
-                            <button type="button" class="btn btn-default" id="subevent_add_many_session_blocks_start">
-                                <i class="fa fa-calendar"></i> {% trans "Add many session blocks" %}</button>
-                        </p>
+                        <div class="row">
+                            <div class="col-sm-3">
+                                <p>
+                                    <button type="button" class="btn btn-default" data-formset-add>
+                                        <i class="fa fa-plus"></i> {% trans "Add empty block" %}
+                                    </button>
+                                </p>
+                            </div>
+                            <div class="col-md-8 text-right flip">
+                                <div class="form-inline" id="subevent_add_recurring_session_block">
+                                    <label for="subevent_add_recurring_session_block_interval">
+                                        {% trans "Clone " %}
+                                    </label>
+                                    <input type="number" class="form-control" id="subevent_add_recurring_session_block_interval" min="1" step="1" value="1">
+                                    <label for="subevent_add_recurring_session_block_unit">
+                                        {% trans "subsequent" %}
+                                    </label>
+                                    <select class="form-control" id="subevent_add_recurring_session_block_unit">
+                                        <option value="weekday">{% trans "Weekday" %}</option>
+                                        <option value="day">{% trans "Day" %}</option>
+                                        <option value="week">{% trans "Week" %}</option>
+                                        <option value="month">{% trans "Month" %}</option>
+                                    </select>
+                                    <button type="button" class="btn btn-default" id="subevent_add_recurring_session_block_go">
+                                        <i class="fa fa-plus"></i> {% trans "Clone block" %}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </fieldset>
                 <fieldset>

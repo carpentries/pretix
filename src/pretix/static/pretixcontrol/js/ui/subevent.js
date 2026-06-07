@@ -1,10 +1,6 @@
 /*globals $, Morris, gettext, RRule, RRuleSet*/
 
 $(document).on("pretix:bind-forms", function () {
-    if (!$("div[data-formset-prefix=checkinlist_set]").length) {
-        return;
-    }
-
     function parse_weekday(wd) {
         map = {
             'MO': 0,
@@ -175,6 +171,87 @@ $(document).on("pretix:bind-forms", function () {
        $(this).addClass("hidden");
     });
 
+    var $sessionBlockFormset = $("#subevent_session_block_formset");
+
+    function getLastSessionBlockForm() {
+        return $sessionBlockFormset.find("[data-formset-body] [data-formset-form]")
+            .filter(function () {
+                return !$(this).is("[data-formset-form-deleted]");
+            })
+            .last();
+    }
+
+    function shiftByWeekdays(momentValue, interval) {
+        var shifted = momentValue.clone();
+        var remaining = interval;
+
+        while (remaining > 0) {
+            shifted.add(1, 'day');
+            if (shifted.isoWeekday() <= 5) {
+                remaining -= 1;
+            }
+        }
+
+        return shifted;
+    }
+
+    function shiftSessionBlockDate(momentValue, interval, unit) {
+        if (!momentValue) {
+            return null;
+        }
+
+        if (unit === 'weekday') {
+            return shiftByWeekdays(momentValue, interval);
+        }
+
+        return momentValue.clone().add(interval, unit);
+    }
+
+    $("#subevent_add_recurring_session_block_go").on("click", function () {
+        var interval = parseInt($("#subevent_add_recurring_session_block_interval").val(), 10) || 0;
+        var unit = $("#subevent_add_recurring_session_block_unit").val();
+        var $sourceForm = getLastSessionBlockForm();
+
+        if (!$sourceForm.length || interval < 1 || !$sessionBlockFormset.length) {
+            return;
+        }
+
+        var dateFrom = $sourceForm.find("[name$=date_from_0]").data('DateTimePicker').date();
+        var timeFrom = $sourceForm.find("[name$=date_from_1]").data('DateTimePicker').date();
+        var dateTo = $sourceForm.find("[name$=date_to_0]").data('DateTimePicker').date();
+        var timeTo = $sourceForm.find("[name$=date_to_1]").data('DateTimePicker').date();
+
+        if (dateFrom) {
+            if (!dateTo) {
+                dateTo = dateFrom.clone();
+            }
+
+            if (!timeFrom) {
+                timeFrom = moment({hour: 0, minute: 0});
+            }
+
+            if (!timeTo) {
+                timeTo = moment({hour: 23, minute: 59});
+            }
+
+            var shiftedDateFrom = shiftSessionBlockDate(dateFrom, interval, unit);
+            var shiftedDateTo = null;
+            if (dateTo && shiftedDateFrom) {
+                shiftedDateTo = dateTo.clone().add(shiftedDateFrom.diff(dateFrom));
+            }
+
+            var $newform = $sessionBlockFormset.formset("getOrCreate").addForm();
+            $newform.attr("data-formset-created-at-runtime", "false");
+
+            window.setTimeout(function () {
+                $newform.find("[name$=date_from_0]").data('DateTimePicker').date(shiftedDateFrom);
+                $newform.find("[name$=date_from_1]").data('DateTimePicker').date(timeFrom);
+                $newform.find("[name$=date_to_0]").data('DateTimePicker').date(shiftedDateTo);
+                $newform.find("[name$=date_to_1]").data('DateTimePicker').date(timeTo);
+            }, 1);
+        }
+    });
+
     // Hide config for products that are not for sale
     function quota_form_handlers(el) {
         // searchable_selection = True
@@ -218,7 +295,7 @@ $(document).on("pretix:bind-forms", function () {
     var lastValue = $namef.val();
     $namef.change(function () {
         var field = $("div[data-formset-prefix=checkinlist_set] input[id$=name]").first();
-        if (field.val() === lastValue) {
+        if (field.length && field.val() === lastValue) {
             lastValue = $(this).val();
             field.val(lastValue);
         }
