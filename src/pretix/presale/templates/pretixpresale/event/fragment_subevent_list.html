@@ -10,14 +10,11 @@
                 {{ subev.name }}
             </a>
         </h3>
-        <p class="col-md-3 col-xs-12" id="subevent-{{ subev.pk }}-desc">
+        <p class="col-md-12 col-xs-12" id="subevent-{{ subev.pk }}-desc">
             {{ subev.get_date_range_display_as_html }}
             {% if subev.has_session_blocks %}
-                <span class="text-muted" aria-hidden="true">
-                    {{ subev.get_date_range_display_as_html }}
-                </span>
                 <br>
-                <div class="session-blocks{% if subev.event.is_remote %} event-is-remote{% endif %}">
+                <div class="col-md-12 col-xs-12 session-blocks{% if subev.event.is_remote %} event-is-remote{% endif %}">
                     <br>
                     {% for session_block in subev.session_blocks.all %}
                         <strong>Session {{ forloop.counter }} - {{ session_block.date_from|date:"DATE_FORMAT" }}</strong>
