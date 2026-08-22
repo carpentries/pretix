@@ -53,7 +53,17 @@ function async_task_on_success(data) {
             // hide waitingDialog when using browser's history back
             waitingDialog.hide();
         });
-        location.href = data.redirect;
+        if (async_task_is_download && window.self !== window.top) {
+            // if in an iframe, force to download an async_task_is_download
+            // e.g. pretix-reseller embeds order-page in iframe, which would cause ticket-PDFs to be displayed inline
+            var a = document.createElement("a");
+            a.href = data.redirect;
+            a.download = "";
+            a.target = "_blank";
+            a.click();
+        } else {
+            location.href = data.redirect;
+        }
     }
     $(this).trigger('pretix:async-task-success', data);
 }
@@ -103,6 +113,10 @@ function async_task_check_error(jqXHR, textStatus, errorThrown) {
     "use strict";
     var respdom = $(jqXHR.responseText);
     var c = respdom.filter('.container');
+    if (jqXHR.status === 401 && jqXHR.getResponseHeader("X-Login-Url")) {
+      window.location = jqXHR.getResponseHeader("X-Login-Url") + "?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+      return;
+    }
     if (respdom.filter('form') && (respdom.filter('.has-error') || respdom.filter('.alert-danger'))) {
         // This is a failed form validation, let's just use it
         $("body").data('ajaxing', false);
@@ -157,6 +171,10 @@ function async_task_callback(data, jqXHR, status) {
 function async_task_error(jqXHR, textStatus, errorThrown) {
     "use strict";
     $("body").data('ajaxing', false);
+    if (jqXHR.status === 401 && jqXHR.getResponseHeader("X-Login-Url")) {
+      window.location = jqXHR.getResponseHeader("X-Login-Url") + "?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+      return;
+    }
     waitingDialog.hide();
     if (textStatus === "timeout") {
         alert(gettext("The request took too long. Please try again."));
@@ -164,15 +182,16 @@ function async_task_error(jqXHR, textStatus, errorThrown) {
         var respdom = $(jqXHR.responseText);
         var c = respdom.filter('.container');
         if (respdom.filter('form') && (respdom.filter('.has-error') || respdom.filter('.alert-danger'))) {
-            // This is a failed form validation, let's just use it
-
             if (respdom.filter('#page-wrapper') && $('#page-wrapper').length) {
+                // This is a failed form validation, let's just use it
                 async_task_replace_page("#page-wrapper", respdom.find("#page-wrapper").html());
             } else {
                 async_task_replace_page("body", jqXHR.responseText.substring(
                     jqXHR.responseText.indexOf("<body"),
                     jqXHR.responseText.indexOf("</body")
                 ));
+                document.dispatchEvent(new Event("pretix:async-task-error"))
+
             }
 
         } else if (c.length > 0) {

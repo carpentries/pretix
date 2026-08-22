@@ -204,7 +204,7 @@ def test_expiry_last_relative(event):
     event.date_from = now() + timedelta(days=5)
     event.save()
     event.settings.set('payment_term_last', RelativeDateWrapper(
-        RelativeDate(days=2, time=None, base_date_name='date_from', minutes=None)
+        RelativeDate(days=2, time=None, base_date_name='event__date_from', minutes=None)
     ))
     order = _create_order(event, email='dummy@example.org', positions=[],
                           now_dt=today,
@@ -245,7 +245,7 @@ def test_expiry_last_relative_subevents(event):
     )
 
     event.settings.set('payment_term_last', RelativeDateWrapper(
-        RelativeDate(days=2, time=None, base_date_name='date_from', minutes=None)
+        RelativeDate(days=2, time=None, base_date_name='event__date_from', minutes=None)
     ))
     order = _create_order(event, email='dummy@example.org', positions=[cp1, cp2],
                           now_dt=today,
@@ -4123,8 +4123,8 @@ def test_giftcard_multiple(event):
     for p in order.payments.all():
         p.payment_provider.execute_payment(None, p)
 
-    assert order.payments.get(info__icontains=gc1.pk).amount == Decimal('12.00')
-    assert order.payments.get(info__icontains=gc2.pk).amount == Decimal('11.00')
+    assert order.payments.get(amount=Decimal("12.00")).info_data["gift_card"] == gc1.pk
+    assert order.payments.get(amount=Decimal("11.00")).info_data["gift_card"] == gc2.pk
     gc1 = GiftCard.objects.get(pk=gc1.pk)
     assert gc1.value == 0
     gc2 = GiftCard.objects.get(pk=gc2.pk)
