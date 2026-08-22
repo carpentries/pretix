@@ -68,7 +68,6 @@ from pretix.base.timemachine import time_machine_now
 from pretix.base.views.tasks import AsyncAction
 from pretix.helpers.http import redirect_to_url
 from pretix.multidomain.urlreverse import eventreverse
-
 from pretix.presale.views import (
     CartMixin, EventViewMixin, allow_cors_if_namespaced,
     allow_frame_if_namespaced, get_cart, iframe_entry_view_wrapper,
@@ -169,7 +168,6 @@ def _item_from_post_value(request, key, value, voucher=None, voucher_ignore_if_r
         except ValueError:
             pass
     elif 'subevent' in request.POST:
-        #  single subevent
         try:
             subevent = int(request.POST.get('subevent'))
         except ValueError:
@@ -419,7 +417,7 @@ def get_or_create_cart_id(request, create=True):
     return new_id
 
 
-def cart_session(request):
+def cart_session(request, create=True):
     """
     Before pretix 1.8.0, all checkout-related information (like the entered email address) was stored
     in the user's regular session dictionary. This led to data interference and leaks for example if a
@@ -430,7 +428,9 @@ def cart_session(request):
     active cart session sub-dictionary for read and write access.
     """
     request.session.modified = True
-    cart_id = get_or_create_cart_id(request)
+    cart_id = get_or_create_cart_id(request, create=create)
+    if not cart_id and not create:
+        return None
     return request.session['carts'][cart_id]
 
 
@@ -555,6 +555,18 @@ class CartClear(EventViewMixin, CartActionMixin, AsyncAction, View):
                        request.sales_channel.identifier, time_machine_now(default=None))
 
 
+@method_decorator(allow_cors_if_namespaced, 'dispatch')
+class CartCreate(EventViewMixin, CartActionMixin, View):
+    def get(self, request, *args, **kwargs):
+        if 'ajax' in self.request.GET:
+            cart_id = get_or_create_cart_id(self.request, create=True)
+            return JsonResponse({
+                'cart_id': cart_id,
+            })
+        else:
+            return redirect_to_url(self.get_success_url())
+
+
 @method_decorator(allow_frame_if_namespaced, 'dispatch')
 class CartExtendReservation(EventViewMixin, CartActionMixin, AsyncAction, View):
     task = extend_cart_reservation
@@ -643,6 +655,7 @@ class CartAdd(EventViewMixin, CartActionMixin, AsyncAction, View):
                 })
             else:
                 return redirect_to_url(self.get_error_url())
+
 
 @method_decorator(allow_frame_if_namespaced, 'dispatch')
 @method_decorator(iframe_entry_view_wrapper, 'dispatch')
@@ -842,9 +855,13 @@ class AnswerDownload(EventViewMixin, View):
             return Http404()
 
         ftype, _ = mimetypes.guess_type(answer.file.name)
-        resp = FileResponse(answer.file, content_type=ftype or 'application/binary')
-        resp['Content-Disposition'] = 'attachment; filename="{}-cart-{}"'.format(
+        filename = '{}-cart-{}'.format(
             self.request.event.slug.upper(),
             os.path.basename(answer.file.name).split('.', 1)[1]
-        ).encode("ascii", "ignore")
+        )
+        resp = FileResponse(
+            answer.file,
+            filename=filename,
+            content_type=ftype or 'application/binary'
+        )
         return resp

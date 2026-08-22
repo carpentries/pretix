@@ -139,7 +139,7 @@ class OrderDetailMixin(NoSearchIndexViewMixin):
                 code=self.kwargs['order'], received_secret=self.kwargs['secret'], tag=None,
             )
 
-            if has_event_access_permission(self.request, 'can_view_orders'):
+            if has_event_access_permission(self.request, 'event.orders:read'):
                 return order
 
             if order.customer is None or not order.customer.is_verified or self._allow_anonymous_access():
@@ -275,7 +275,7 @@ class TicketPageMixin:
 
         ctx['download_buttons'] = self.download_buttons
 
-        ctx['backend_user'] = has_event_access_permission(self.request, 'can_view_orders')
+        ctx['backend_user'] = has_event_access_permission(self.request, 'event.orders:read')
 
         return ctx
 
@@ -929,6 +929,21 @@ class OrderModify(EventViewMixin, OrderDetailMixin, OrderQuestionsViewMixin, Tem
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(
+            **kwargs,
+        )
+
+        ctx['invoice_generation_selfservice'] = (
+            self.request.event.settings.invoice_reissue_after_modify or
+            (
+                can_generate_invoice(self.request.event, self.order, ignore_payments=True) and
+                not self.order.invoices.exists()
+            )
+        )
+
+        return ctx
+
     def dispatch(self, request, *args, **kwargs):
         self.request = request
         self.kwargs = kwargs
@@ -1225,30 +1240,26 @@ class OrderDownloadMixin:
                 resp = HttpResponseRedirect(value.file.file.read())
                 return resp
             else:
-                resp = FileResponse(value.file.file, content_type=value.type)
-                if self.order_position.subevent:
-                    # Subevent date in filename improves accessibility e.g. for screen reader users
-                    resp['Content-Disposition'] = 'attachment; filename="{}-{}-{}-{}-{}{}"'.format(
-                        self.request.event.slug.upper(), self.order.code, self.order_position.positionid,
-                        self.order_position.subevent.date_from.strftime('%Y_%m_%d'),
-                        self.output.identifier, value.extension
-                    )
-                else:
-                    resp['Content-Disposition'] = 'attachment; filename="{}-{}-{}-{}{}"'.format(
-                        self.request.event.slug.upper(), self.order.code, self.order_position.positionid,
-                        self.output.identifier, value.extension
-                    )
-                return resp
+                name_parts = (
+                    self.request.event.slug.upper(),
+                    self.order.code,
+                    str(self.order_position.positionid),
+                    self.order_position.subevent.date_from.strftime('%Y_%m_%d') if self.order_position.subevent else None,
+                    self.output.identifier
+                )
+                filename = "-".join(filter(None, name_parts)) + value.extension
+                return FileResponse(value.file.file, filename=filename, content_type=value.type)
         elif isinstance(value, CachedCombinedTicket):
             if value.type == 'text/uri-list':
                 resp = HttpResponseRedirect(value.file.file.read())
                 return resp
             else:
-                resp = FileResponse(value.file.file, content_type=value.type)
-                resp['Content-Disposition'] = 'attachment; filename="{}-{}-{}{}"'.format(
-                    self.request.event.slug.upper(), self.order.code, self.output.identifier, value.extension
+                return FileResponse(
+                    value.file.file,
+                    filename="{}-{}-{}{}".format(
+                        self.request.event.slug.upper(), self.order.code, self.output.identifier, value.extension),
+                    content_type=value.type
                 )
-                return resp
         else:
             return redirect(self.get_self_url())
 
@@ -1388,13 +1399,14 @@ class InvoiceDownload(EventViewMixin, OrderDetailMixin, View):
             return redirect(self.get_order_url())
 
         try:
-            resp = FileResponse(invoice.file.file, content_type='application/pdf')
+            return FileResponse(
+                invoice.file.file,
+                filename='{}.pdf'.format(re.sub("[^a-zA-Z0-9-_.]+", "_", invoice.number)),
+                content_type='application/pdf'
+            )
         except FileNotFoundError:
             invoice_pdf_task.apply(args=(invoice.pk,))
             return self.get(request, *args, **kwargs)
-        resp['Content-Disposition'] = 'inline; filename="{}.pdf"'.format(re.sub("[^a-zA-Z0-9-_.]+", "_", invoice.number))
-        resp._csp_ignore = True  # Some browser's PDF readers do not work with CSP
-        return resp
 
 
 class OrderChangeMixin:
@@ -1530,7 +1542,10 @@ class OrderChangeMixin:
                             'max_count': iao.max_count,
                             'iao': iao,
                             'items': [i for i in items if not i.require_voucher],
-                            'items_missing': {k: v for k, v in current_addon_products_missing.items() if v},
+                            'items_missing': {
+                                k: v for k, v in current_addon_products_missing.items()
+                                if v and k[0].category_id == iao.addon_category_id
+                            },
                         })
 
         return positions

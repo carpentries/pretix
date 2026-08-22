@@ -38,7 +38,8 @@ import dateutil.parser
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Exists, Max, OuterRef, Prefetch, Q, Subquery
+from django.db.models import Exists, Max, OuterRef, Prefetch, Q, Subquery, Window, F
+from django.db.models.functions import RowNumber
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -52,7 +53,9 @@ from pretix.api.views.checkin import _redeem_process
 from pretix.base.media import MEDIA_TYPES
 from pretix.base.models import Checkin, LogEntry, Order, OrderPosition
 from pretix.base.models.checkin import CheckinList
+from pretix.base.models.event import SubEventSessionBlock
 from pretix.base.models.orders import PrintLog
+from pretix.base.permissions import AnyPermissionOf
 from pretix.base.services.checkin import (
     LazyRuleVars, _logic_annotate_for_graphic_explain,
 )
@@ -68,6 +71,9 @@ from pretix.control.permissions import EventPermissionRequiredMixin
 from pretix.control.views import CreateView, PaginationMixin, UpdateView
 from pretix.helpers.compat import CompatDeleteView
 from pretix.helpers.models import modelcopy
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class CheckInListQueryMixin:
@@ -130,10 +136,29 @@ class CheckInListQueryMixin:
         if filter and self.filter_form.is_valid():
             qs = self.filter_form.filter_qs(qs)
 
-        if 'checkin' in self.request_data and '__ALL' not in self.request_data:
-            qs = qs.filter(
-                id__in=self.request_data.getlist('checkin')
+        if self.list.subevent and self.list.subevent.has_session_blocks:
+            latest_checkins_qs = Checkin.objects.filter(
+                list=self.list
+            ).annotate(
+                row_num=Window(
+                    expression=RowNumber(),
+                    partition_by=[F('position_id'), F('session_block_id')],
+                    order_by=F('datetime').desc()
+                )
+            ).filter(row_num=1).select_related('session_block')
+
+            qs = qs.prefetch_related(
+                Prefetch(
+                    'checkins',
+                    queryset=latest_checkins_qs,
+                    to_attr='session_checkins'
+                )
             )
+        else:
+            if 'checkin' in self.request_data and '__ALL' not in self.request_data:
+                qs = qs.filter(
+                    id__in=self.request_data.getlist('checkin')
+                )
 
         return qs
 
@@ -150,7 +175,7 @@ class CheckInListShow(EventPermissionRequiredMixin, PaginationMixin, CheckInList
     model = Checkin
     context_object_name = 'entries'
     template_name = 'pretixcontrol/checkin/index.html'
-    permission = 'can_view_orders'
+    permission = 'event.orders:read'
 
     def dispatch(self, request, *args, **kwargs):
         self.list = get_object_or_404(self.request.event.checkin_lists.all(), pk=kwargs.get("list"))
@@ -165,10 +190,12 @@ class CheckInListShow(EventPermissionRequiredMixin, PaginationMixin, CheckInList
                 self.list.subevent.seating_plan_id if self.list.subevent
                 else self.request.event.subevents.filter(seating_plan__isnull=False).exists()
             )
+            if self.list.subevent.has_session_blocks:
+                ctx['session_blocks'] = self.list.subevent.session_blocks.all()
         else:
             ctx['seats'] = self.request.event.seating_plan_id
         ctx['filter_form'] = self.filter_form
-        for e in ctx['entries']:
+        for e in ctx['entries']: # checkin object
             if e.last_entry:
                 if isinstance(e.last_entry, str):
                     # Apparently only happens on SQLite
@@ -189,6 +216,16 @@ class CheckInListShow(EventPermissionRequiredMixin, PaginationMixin, CheckInList
                 else:
                     # This would be correct, so guess on which database it works… Yes, it's PostgreSQL.
                     e.last_exit_aware = e.last_exit
+
+            # populate the most recent checkins for each given position (entry) session block, if any
+            e.checkin_by_block = [
+                (block, next(
+                    (c for c in e.session_checkins if c.session_block_id == block.id),
+                    None
+                ))
+                for block in ctx['session_blocks']
+            ]
+
         return ctx
 
 
@@ -211,7 +248,7 @@ class CheckInListBulkRevertConfirmView(CheckInListQueryMixin, EventPermissionReq
 
 
 class CheckInListBulkActionView(CheckInListQueryMixin, EventPermissionRequiredMixin, AsyncPostView):
-    permission = ('can_change_orders', 'can_checkin_orders')
+    permission = AnyPermissionOf('event.orders:write', 'event.orders:checkin')
 
     def dispatch(self, request, *args, **kwargs):
         self.list = get_object_or_404(self.request.event.checkin_lists.all(), pk=kwargs.get("list"))
@@ -228,52 +265,142 @@ class CheckInListBulkActionView(CheckInListQueryMixin, EventPermissionRequiredMi
         self.list = get_object_or_404(request.event.checkin_lists.all(), pk=kwargs.get("list"))
         positions = self.get_queryset()
         if request.POST.get('revert') == 'true':
-            if not request.user.has_event_permission(request.organizer, request.event, 'can_change_orders', request=request):
+            if not request.user.has_event_permission(request.organizer, request.event, 'event.orders:write', request=request):
                 raise PermissionDenied()
-            for op in positions:
-                if op.order.status == Order.STATUS_PAID or (
-                    (self.list.include_pending or op.order.valid_if_pending) and op.order.status == Order.STATUS_PENDING
-                ):
-                    _, deleted = Checkin.objects.filter(position=op, list=self.list).delete()
-                    if deleted:
-                        op.order.log_action('pretix.event.checkin.reverted', data={
-                            'position': op.id,
-                            'positionid': op.positionid,
-                            'list': self.list.pk,
-                            'web': True
-                        }, user=request.user)
-                        op.order.touch()
+
+            selected_checkins = request.POST.getlist('session-checkin')
+
+            if selected_checkins:
+                for checkin_pks in selected_checkins:
+                    try:
+                        position_pk, session_block_pk = checkin_pks.split('_')
+                        position_pk = int(position_pk)
+                        session_block_pk = int(session_block_pk)
+
+                        op = OrderPosition.objects.get(
+                            pk=position_pk,
+                            order__event=request.event
+                        )
+
+                        session_block = SubEventSessionBlock.objects.get(
+                            pk=session_block_pk,
+                            subevent=self.list.subevent
+                        )
+                        _, deleted = Checkin.objects.filter(position=op, list=self.list, session_block=session_block).delete()
+                        if deleted:
+                            op.order.log_action('pretix.event.checkin.reverted', data={
+                                'position': op.id,
+                                'positionid': op.positionid,
+                                'list': self.list.pk,
+                                'web': True
+                            }, user=request.user)
+                            op.order.touch()
+                    except ((ValueError, AttributeError, SubEventSessionBlock.DoesNotExist, OrderPosition.DoesNotExist)):
+                        continue
+            else:
+                for op in positions:
+
+                    if op.order.status == Order.STATUS_PAID or (
+                        (self.list.include_pending or op.order.valid_if_pending) and op.order.status == Order.STATUS_PENDING
+                    ):
+                        _, deleted = Checkin.objects.filter(position=op, list=self.list).delete()
+                        if deleted:
+                            op.order.log_action('pretix.event.checkin.reverted', data={
+                                'position': op.id,
+                                'positionid': op.positionid,
+                                'list': self.list.pk,
+                                'web': True
+                            }, user=request.user)
+                            op.order.touch()
 
             return 'reverted', request.POST.get('returnquery')
         else:
             t = Checkin.TYPE_EXIT if request.POST.get('checkout') == 'true' else Checkin.TYPE_ENTRY
-            for op in positions:
-                if op.order.status == Order.STATUS_PAID or (
-                    (self.list.include_pending or op.order.valid_if_pending) and op.order.status == Order.STATUS_PENDING
-                ):
-                    lci = op.checkins.filter(list=self.list).first()
-                    if self.list.allow_multiple_entries or t != Checkin.TYPE_ENTRY or (lci and lci.type != Checkin.TYPE_ENTRY):
-                        ci = Checkin.objects.create(position=op, list=self.list, datetime=now(), type=t)
-                        created = True
-                    else:
-                        try:
-                            ci, created = Checkin.objects.get_or_create(position=op, list=self.list, defaults={
-                                'datetime': now(),
-                            })
-                        except Checkin.MultipleObjectsReturned:
-                            ci, created = Checkin.objects.filter(position=op, list=self.list).first(), False
 
-                    op.order.log_action('pretix.event.checkin', data={
-                        'position': op.id,
-                        'positionid': op.positionid,
-                        'first': created,
-                        'forced': False,
-                        'datetime': now(),
-                        'type': t,
-                        'list': self.list.pk,
-                        'web': True
-                    }, user=request.user)
-                    checkin_created.send(op.order.event, checkin=ci)
+            selected_checkins = request.POST.getlist('session-checkin')
+
+            if selected_checkins:
+                for checkin_pks in selected_checkins:
+                    try:
+                        position_pk, session_block_pk = checkin_pks.split('_')
+                        position_pk = int(position_pk)
+                        session_block_pk = int(session_block_pk)
+
+                        op = OrderPosition.objects.get(
+                            pk=position_pk,
+                            order__event=request.event
+                        )
+
+                        session_block = SubEventSessionBlock.objects.get(
+                            pk=session_block_pk,
+                            subevent=self.list.subevent
+                        )
+
+                        #  raise Exception(f"Debug: {op} ::: {session_block}")
+
+                        if op.order.status == Order.STATUS_PAID or (
+                            (self.list.include_pending or op.order.valid_if_pending) and op.order.status == Order.STATUS_PENDING
+                        ):
+                            #lci = op.checkins.filter(list=self.list).first()
+                            #if self.list.allow_multiple_entries or t != Checkin.TYPE_ENTRY or (lci and lci.type != Checkin.TYPE_ENTRY):
+                            ci = Checkin.objects.create(position=op, list=self.list, datetime=now(), type=t, session_block=session_block)
+                            created = True
+
+                            # raise Exception(f"Debug: {ci.id} ::: {ci.position.id} ::: {op.id} ::: {session_block.id} ::: {self.list.pk}")
+                            # 53, 1, 1, 1, 2
+                            #else:
+                                #try:
+                            #ci, created = Checkin.objects.create(position=op, list=self.list, session_block=session_block, defaults={
+                            #    'datetime': now(),
+                            #})
+
+                                #except Checkin.MultipleObjectsReturned:
+                                #    ci, created = Checkin.objects.filter(position=op, list=self.list, session_block=session_block).first(), False
+
+                            op.order.log_action('pretix.event.checkin', data={
+                                'position': op.id,
+                                'positionid': op.positionid,
+                                'first': created,
+                                'forced': False,
+                                'datetime': now(),
+                                'type': t,
+                                'list': self.list.pk,
+                                'web': True,
+                                'session_block': session_block.id,
+                            }, user=request.user)
+                            checkin_created.send(op.order.event, checkin=ci)
+
+                    except ((ValueError, AttributeError, SubEventSessionBlock.DoesNotExist, OrderPosition.DoesNotExist)):
+                        continue
+            else:
+                for op in positions:
+                    if op.order.status == Order.STATUS_PAID or (
+                        (self.list.include_pending or op.order.valid_if_pending) and op.order.status == Order.STATUS_PENDING
+                    ):
+                        lci = op.checkins.filter(list=self.list).first()
+                        if self.list.allow_multiple_entries or t != Checkin.TYPE_ENTRY or (lci and lci.type != Checkin.TYPE_ENTRY):
+                            ci = Checkin.objects.create(position=op, list=self.list, datetime=now(), type=t)
+                            created = True
+                        else:
+                            try:
+                                ci, created = Checkin.objects.get_or_create(position=op, list=self.list, defaults={
+                                    'datetime': now(),
+                                })
+                            except Checkin.MultipleObjectsReturned:
+                                ci, created = Checkin.objects.filter(position=op, list=self.list).first(), False
+
+                        op.order.log_action('pretix.event.checkin', data={
+                            'position': op.id,
+                            'positionid': op.positionid,
+                            'first': created,
+                            'forced': False,
+                            'datetime': now(),
+                            'type': t,
+                            'list': self.list.pk,
+                            'web': True
+                        }, user=request.user)
+                        checkin_created.send(op.order.event, checkin=ci)
+
             return 'checked-out' if t == Checkin.TYPE_EXIT else 'checked-in', request.POST.get('returnquery')
 
     def get_success_message(self, value):
@@ -295,7 +422,7 @@ class CheckInListBulkActionView(CheckInListQueryMixin, EventPermissionRequiredMi
 class CheckinListList(EventPermissionRequiredMixin, PaginationMixin, ListView):
     model = CheckinList
     context_object_name = 'checkinlists'
-    permission = 'can_view_orders'
+    permission = AnyPermissionOf('event.orders:read', 'event.settings.general:write')
     template_name = 'pretixcontrol/checkin/lists.html'
     ordering = ('subevent__date_from', 'name', 'pk')
 
@@ -317,9 +444,9 @@ class CheckinListList(EventPermissionRequiredMixin, PaginationMixin, ListView):
                 cl.subevent.event = self.request.event  # re-use same event object to make sure settings are cached
         ctx['checkinlists'] = clists
 
-        ctx['can_change_organizer_settings'] = self.request.user.has_organizer_permission(
+        ctx['link_device_settings'] = self.request.user.has_organizer_permission(
             self.request.organizer,
-            'can_change_organizer_settings',
+            'organizer.devices:read',
             self.request
         )
         ctx['filter_form'] = self.filter_form
@@ -335,7 +462,7 @@ class CheckinListCreate(EventPermissionRequiredMixin, CreateView):
     model = CheckinList
     form_class = CheckinListForm
     template_name = 'pretixcontrol/checkin/list_edit.html'
-    permission = 'can_change_event_settings'
+    permission = 'event.settings.general:write'
     context_object_name = 'checkinlist'
 
     def dispatch(self, request, *args, **kwargs):
@@ -386,7 +513,7 @@ class CheckinListUpdate(EventPermissionRequiredMixin, UpdateView):
     model = CheckinList
     form_class = CheckinListForm
     template_name = 'pretixcontrol/checkin/list_edit.html'
-    permission = 'can_change_event_settings'
+    permission = 'event.settings.general:write'
     context_object_name = 'checkinlist'
 
     def dispatch(self, request, *args, **kwargs):
@@ -445,7 +572,7 @@ class CheckinListUpdate(EventPermissionRequiredMixin, UpdateView):
 class CheckinListDelete(EventPermissionRequiredMixin, CompatDeleteView):
     model = CheckinList
     template_name = 'pretixcontrol/checkin/list_delete.html'
-    permission = 'can_change_event_settings'
+    permission = 'event.settings.general:write'
     context_object_name = 'checkinlist'
 
     def get_object(self, queryset=None) -> CheckinList:
@@ -476,7 +603,7 @@ class CheckinListDelete(EventPermissionRequiredMixin, CompatDeleteView):
 class CheckinListView(EventPermissionRequiredMixin, PaginationMixin, ListView):
     model = Checkin
     context_object_name = 'checkins'
-    permission = 'can_view_orders'
+    permission = 'event.orders:read'
     template_name = 'pretixcontrol/checkin/checkins.html'
     ordering = ('-datetime', '-pk')
 
@@ -505,7 +632,7 @@ class CheckinListView(EventPermissionRequiredMixin, PaginationMixin, ListView):
 
 class CheckInListSimulator(EventPermissionRequiredMixin, FormView):
     template_name = 'pretixcontrol/checkin/simulator.html'
-    permission = 'can_view_orders'
+    permission = 'event.orders:read'
     form_class = CheckinListSimulatorForm
 
     def dispatch(self, request, *args, **kwargs):
@@ -554,6 +681,7 @@ class CheckInListSimulator(EventPermissionRequiredMixin, FormView):
             legacy_url_support=False,
             simulate=True,
             gate=form.cleaned_data.get("gate"),
+            session_block=form.cleaned_data.get("session_block"),
         ).data
 
         if self.result.get("position"):
@@ -575,8 +703,14 @@ class CheckInListSimulator(EventPermissionRequiredMixin, FormView):
 
 class CheckInResetView(CheckInListQueryMixin, EventPermissionRequiredMixin, AsyncFormView):
     form_class = CheckinResetForm
-    permission = "can_change_orders"
+    permission = "event.orders:write"
     template_name = "pretixcontrol/checkin/reset.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        # Special case, we want two permissions to be set
+        if not request.user.has_event_permission(request.organizer, request.event, "event.settings.general:write", request=request):
+            raise PermissionDenied()
+        return super().dispatch(request, *args, **kwargs)
 
     def get_error_url(self, *args):
         return reverse(

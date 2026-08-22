@@ -88,6 +88,7 @@ class CheckinRPCRedeemInputSerializer(serializers.Serializer):
     nonce = serializers.CharField(required=False, allow_null=True)
     datetime = serializers.DateTimeField(required=False, allow_null=True)
     answers = serializers.JSONField(required=False, allow_null=True)
+    session_blocks = serializers.ListField(child=serializers.IntegerField(), required=False, allow_null=True)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -518,6 +518,7 @@ def pretixcontrol_orderposition_blocked_display(sender: Event, orderposition, bl
         'The order requires approval before it can continue to be processed.'),
     'pretix.event.order.approved': _('The order has been approved.'),
     'pretix.event.order.denied': _('The order has been denied (comment: "{comment}").'),
+    'pretix.event.order.vatid.validated': _('The customer VAT ID has been verified.'),
     'pretix.event.order.contact.changed': _('The email address has been changed from "{old_email}" '
                                             'to "{new_email}".'),
     'pretix.event.order.contact.confirmed': _(
@@ -640,6 +641,7 @@ class TeamMembershipLogEntryType(LogEntryType):
     'pretix.team.member.added': _('{user} has been added to the team.'),
     'pretix.team.member.removed': _('{user} has been removed from the team.'),
     'pretix.team.invite.created': _('{user} has been invited to the team.'),
+    'pretix.team.invite.deleted': _('Invite for {user} has been deleted.'),
     'pretix.team.invite.resent': _('Invite for {user} has been resent.'),
 })
 class CoreTeamMembershipLogEntryType(TeamMembershipLogEntryType):

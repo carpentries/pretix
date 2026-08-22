@@ -33,11 +33,6 @@ from tests.base import SoupTest, extract_form_fields
 from pretix.base.models import Event, Organizer, OutgoingMail, Team, User
 
 
-@pytest.fixture
-def class_monkeypatch(request, monkeypatch):
-    request.cls.monkeypatch = monkeypatch
-
-
 @pytest.mark.usefixtures("class_monkeypatch")
 class OrganizerTest(SoupTest):
     @scopes_disabled()
@@ -52,8 +47,7 @@ class OrganizerTest(SoupTest):
             plugins='pretix.plugins.banktransfer,tests.testdummy'
         )
 
-        t = Team.objects.create(organizer=self.orga1, can_create_events=True, can_change_event_settings=True,
-                                can_change_items=True, can_change_organizer_settings=True)
+        t = Team.objects.create(organizer=self.orga1, all_organizer_permissions=True, all_event_permissions=True)
         t.members.add(self.user)
         t.limit_events.add(self.event1)
 

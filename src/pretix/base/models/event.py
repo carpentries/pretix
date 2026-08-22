@@ -146,9 +146,21 @@ class EventMixin:
             self.date_from.astimezone(tz), "TIME_FORMAT"
         )
 
+    def get_time_to_display(self, tz=None) -> str:
+        """
+        Returns a formatted string containing the end time of the event, ignoring
+        the ``show_times`` setting.
+        """
+        tz = tz or self.timezone
+        if not self.settings.show_date_to or not self.date_to:
+            return ""
+        return _date(
+            self.date_to.astimezone(tz), "TIME_FORMAT"
+        )
+
     def get_date_to_display(self, tz=None, show_times=True, short=False) -> str:
         """
-        Returns a formatted string containing the start date of the event with respect
+        Returns a formatted string containing the end date of the event with respect
         to the current locale and to the ``show_times`` setting. Returns an empty string
         if ``show_date_to`` is ``False``.
         """
@@ -171,6 +183,67 @@ class EventMixin:
         return _date(
             self.date_to.astimezone(tz), ("D" if short else "l")
         )
+
+    def get_time_range_display(self, tz=None, force_show_end=False, as_html=False) -> str:
+        """
+        Returns a formatted string containing the start time and the end time
+        of the event with respect to the current locale and to the ``show_date_to``
+        setting. Only times are shown.
+        """
+        tz = tz or self.timezone
+        if (not self.settings.show_date_to and not force_show_end) or not self.date_to:
+            time_str = _date(self.date_from.astimezone(tz), "TIME_FORMAT")
+        else:
+            time_str = '{}–{}'.format(
+                _date(self.date_from.astimezone(tz), "TIME_FORMAT"),
+                _date(self.date_to.astimezone(tz), "TIME_FORMAT"),
+            )
+
+        if as_html:
+            return format_html(
+                '<time datetime="{}" data-timezone="{}" data-time-short>{}</time>',
+                self.date_from.isoformat(),
+                str(tz),
+                time_str,
+            )
+        else:
+            return time_str
+
+    def get_time_begin_end_display(self, tz=None, force_show_end=False, as_html=False) -> str:
+        """
+        Returns a formatted string containing the start time and the end time
+        of the event with respect to the current locale and to the ``show_date_to``
+        setting. Only times are shown.
+        """
+        tz = tz or self.timezone
+        df = _date(self.date_from.astimezone(tz), "TIME_FORMAT"),
+        dt = None
+
+        if (self.settings.show_date_to or force_show_end) and self.date_to:
+            dt = _date(self.date_to.astimezone(tz), "TIME_FORMAT"),
+
+        if as_html:
+            start_str = format_html(
+                '<span data-time="{}" data-timezone="{}"><time datetime="{}" data-timezone="{}" data-time-short>{}</time></span>',
+                self.date_from.isoformat(),
+                str(tz),
+                self.date_from.isoformat(),
+                str(tz),
+                df,
+            )
+
+            if dt:
+                end_str = format_html(
+                    '<span data-time="{}" data-timezone="{}"><time datetime="{}" data-timezone="{}" data-time-short>{}</time></span>',
+                    self.date_to.isoformat(),
+                    str(tz),
+                    self.date_to.isoformat(),
+                    str(tz),
+                    dt,
+                )
+                return format_html('{}<br>{}', start_str, end_str)
+            return format_html('{}', start_str)
+        return dt
 
     def get_date_range_display(self, tz=None, force_show_end=False, as_html=False, try_to_show_times=False) -> str:
         """
@@ -222,6 +295,9 @@ class EventMixin:
 
     def get_date_range_display_as_html(self, tz=None, force_show_end=False) -> str:
         return self.get_date_range_display(tz, force_show_end, as_html=True)
+
+    def get_time_range_display_as_html(self, tz=None, force_show_end=False) -> str:
+        return self.get_time_range_display(tz, force_show_end, as_html=True)
 
     @property
     def timezone(self):
@@ -849,6 +925,33 @@ class Event(EventMixin, LoggedModel):
             time(hour=23, minute=59, second=59)
         ), tz)
 
+    def allow_copy_data(self, new_organizer, auth) -> bool:
+        """
+        Returns whether it is allowed to copy the event to the target organizer. Auth can be TeamAPIToken or User.
+        """
+        from ..permissions import get_all_event_permissions
+        from .auth import User
+
+        if self.organizer == new_organizer:
+            # Copying in the same organizer is always okay with any read access, we just need to ensure it does not
+            # grant more permissions than I had before, but that is handled by the view logic
+            return auth.has_event_permission(self.organizer, self, None)
+
+        if isinstance(auth, User):
+            # Cross-organizer copying requires almost full permission of source to prevent settings extraction
+            required_permissions = get_all_event_permissions() - {
+                # We do not require these, as this data is not copied
+                "event.orders:read", "event.orders:write", "event.vouchers:read", "event.vouchers:write",
+                "event.subevents:write",
+            }
+            given_permission = auth.get_event_permission_set(self.organizer, self)
+            return all(p in given_permission for p in required_permissions if ":" in p)
+
+        else:
+            # Tokens or devices can never copy between organizers, as they are organizer-bound. Kept for future
+            # compatibility and easier calling
+            return False
+
     def copy_data_from(self, other, skip_meta_data=False):
         from ..signals import event_copy_data
         from . import (
@@ -1392,14 +1495,13 @@ class Event(EventMixin, LoggedModel):
         from .auth import User
 
         if permission:
-            kwargs = {permission: True}
+            qs = Team.objects.with_event_permission(permission)
         else:
-            kwargs = {}
+            qs = Team.objects.all()
 
-        team_with_perm = Team.objects.filter(
+        team_with_perm = qs.filter(
             members__pk=OuterRef('pk'),
             organizer=self.organizer,
-            **kwargs
         ).filter(
             Q(all_events=True) | Q(limit_events__pk=self.pk)
         )
@@ -1818,15 +1920,18 @@ class SubEventSessionBlock(models.Model):
         verbose_name=_("Location")
     )
 
+    # def __init__(self, *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+    #     self.__original_dates = (self.date_from, self.date_to)
+    #     self.settings = self.subevent.settings
+
     class Meta:
         ordering = ['date_from']
         verbose_name = _("Session block")
         verbose_name_plural = _("Session blocks")
 
     def __str__(self):
-        if self.name:
-            return f"{self.subevent.name} - {self.name}"
-        return f"{self.subevent.name} - {self.date_from.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.subevent.name}: [{self.date_from.strftime('%Y-%m-%d %H:%M')} - {self.date_to.strftime('%Y-%m-%d %H:%M') if self.date_to else '...'}]"
 
     def clean(self):
         super().clean()

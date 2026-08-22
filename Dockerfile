@@ -1,4 +1,4 @@
-FROM python:3.11-bookworm
+FROM python:3.13-trixie
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -67,6 +67,10 @@ RUN chmod +x /usr/local/bin/pretix && \
     mkdir -p data && \
     chown -R pretixuser:pretixuser /pretix /data data &&  \
     sudo -u pretixuser make production
+
+# Fix permissions for nginx
+USER root
+RUN sed -i 's/user www-data www-data;/user pretixuser pretixuser;/' /etc/nginx/nginx.conf
 
 USER pretixuser
 VOLUME ["/etc/pretix", "/data"]

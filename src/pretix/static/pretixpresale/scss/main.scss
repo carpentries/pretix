@@ -144,7 +144,7 @@ a.no-underline:hover, nav li a:hover {
 h1 a, .btn {
     text-decoration: none;
 }
-p > a .fa:first-child { margin-right: 0.1ch }
+a .fa:first-child { margin-right: 0.5ch }
 /*
 a, .btn-link {
     text-decoration: underline;
@@ -522,6 +522,16 @@ h2 .label {
     h4 small {
         font-size: 85%;
     }
+}
+
+.event-list table dl {
+    margin-top: 0px;
+    margin-left: 15px;
+    margin-bottom: 0px;
+}
+
+.event-list table td {
+    padding-bottom: 10px;
 }
 
 .quotabox {

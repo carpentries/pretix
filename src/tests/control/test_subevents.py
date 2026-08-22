@@ -45,8 +45,7 @@ class SubEventsTest(SoupTest):
             has_subevents=True
         )
 
-        t = Team.objects.create(organizer=self.orga1, can_create_events=True, can_change_event_settings=True,
-                                can_change_items=True)
+        t = Team.objects.create(organizer=self.orga1, all_organizer_permissions=True, all_event_permissions=True)
         t.members.add(self.user)
         t.limit_events.add(self.event1)
         self.ticket = self.event1.items.create(name='Early-bird ticket',
@@ -66,6 +65,13 @@ class SubEventsTest(SoupTest):
     def test_create(self):
         doc = self.get_doc('/control/event/ccc/30c3/subevents/add')
         assert doc.select("input[name=quotas-TOTAL_FORMS]")
+        assert doc.select("#subevent_session_block_formset")
+        assert doc.select("#subevent_add_recurring_session_block_interval")
+        unit_select = doc.select("#subevent_add_recurring_session_block_unit")
+        assert unit_select
+        assert [option.attrs.get('value') for option in unit_select[0].select("option")] == [
+            'weekday', 'day', 'week', 'month'
+        ]
         doc = self.post_doc('/control/event/ccc/30c3/subevents/add', {
             'name_0': 'SE2',
             'active': 'on',

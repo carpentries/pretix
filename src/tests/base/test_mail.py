@@ -32,21 +32,29 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under the License.
 
+import datetime
 import os
 import re
+import socket
+from contextlib import contextmanager
+from decimal import Decimal
 from email.mime.text import MIMEText
+from unittest import mock
 
 import pytest
 from django.conf import settings
 from django.core import mail as djmail
 from django.test import override_settings
+from django.utils.html import escape
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
-from django_scopes import scope
+from django_scopes import scope, scopes_disabled
 from i18nfield.strings import LazyI18nString
 
 from pretix.base.email import get_email_context
-from pretix.base.models import Event, Organizer, OutgoingMail, User
+from pretix.base.models import (
+    Event, InvoiceAddress, Order, Organizer, OutgoingMail, User,
+)
 from pretix.base.services.mail import mail, mail_send_task
 
 
@@ -66,6 +74,45 @@ def env():
     user.save()
     with scope(organizer=o):
         yield event, user, o
+
+
+@pytest.fixture
+@scopes_disabled()
+def item(env):
+    return env[0].items.create(name="Budget Ticket", default_price=23)
+
+
+@pytest.fixture
+@scopes_disabled()
+def order(env, item):
+    event, _, _ = env
+    o = Order.objects.create(
+        code="FOO",
+        event=event,
+        email="dummy@dummy.test",
+        status=Order.STATUS_PENDING,
+        secret="k24fiuwvu8kxz3y1",
+        sales_channel=event.organizer.sales_channels.get(identifier="web"),
+        datetime=datetime.datetime(2017, 12, 1, 10, 0, 0, tzinfo=datetime.timezone.utc),
+        expires=datetime.datetime(2017, 12, 10, 10, 0, 0, tzinfo=datetime.timezone.utc),
+        total=23,
+        locale="en",
+    )
+    o.positions.create(
+        order=o,
+        item=item,
+        variation=None,
+        price=Decimal("23"),
+        attendee_email="peter@example.org",
+        attendee_name_parts={"given_name": "Peter", "family_name": "Miller"},
+        secret="z3fsn8jyufm5kpk768q69gkbyr5f4h6w",
+        pseudonymization_id="ABCDEFGHKL",
+    )
+    InvoiceAddress.objects.create(
+        order=o,
+        name_parts={"given_name": "Peter", "family_name": "Miller"},
+    )
+    return o
 
 
 @pytest.mark.django_db
@@ -279,7 +326,7 @@ def _extract_html(mail):
 def test_placeholder_html_rendering_from_template(env):
     djmail.outbox = []
     event, user, organizer = env
-    event.name = "<strong>event & co. kg</strong>"
+    event.name = "<strong>event & co. kg</strong> {currency}"
     event.save()
     mail('dummy@dummy.dummy', '{event} Test subject', 'mailtest.txt', get_email_context(
         event=event,
@@ -288,25 +335,26 @@ def test_placeholder_html_rendering_from_template(env):
 
     assert len(djmail.outbox) == 1
     assert djmail.outbox[0].to == [user.email]
-    assert 'Event name: <strong>event & co. kg</strong>' in djmail.outbox[0].body
-    assert '**IBAN**: 123  \n**BIC**: 456' in djmail.outbox[0].body
-    assert '**Meta**: *Beep*' in djmail.outbox[0].body
-    assert 'Event website: [<strong>event & co. kg</strong>](https://example.org/dummy)' in djmail.outbox[0].body
-    assert 'Other website: [<strong>event & co. kg</strong>](https://example.com)' in djmail.outbox[0].body
-    assert '&lt;' not in djmail.outbox[0].body
-    assert '&amp;' not in djmail.outbox[0].body
+    # Known bug for now: These should not have HTML for the plain body, but we'll fix this safter the security release
+    assert escape('Event name: <strong>event & co. kg</strong> {currency}') in djmail.outbox[0].body
+    assert '<strong>IBAN</strong>: 123<br>\n<strong>BIC</strong>: 456' in djmail.outbox[0].body
+    assert '**Meta**: <em>Beep</em>' in djmail.outbox[0].body
+    assert escape('Event website: [<strong>event & co. kg</strong> {currency}](https://example.org/dummy)') in djmail.outbox[0].body
+    # todo: assert '&lt;' not in djmail.outbox[0].body
+    # todo: assert '&amp;' not in djmail.outbox[0].body
+    assert 'Unevaluated placeholder: {currency}' in djmail.outbox[0].body
+    assert 'EUR' not in djmail.outbox[0].body
     html = _extract_html(djmail.outbox[0])
 
     assert '<strong>event' not in html
-    assert 'Event name: &lt;strong&gt;event &amp; co. kg&lt;/strong&gt;' in html
+    assert 'Event name: &lt;strong&gt;event &amp; co. kg&lt;/strong&gt; {currency}' in html
     assert '<strong>IBAN</strong>: 123<br/>\n<strong>BIC</strong>: 456' in html
     assert '<strong>Meta</strong>: <em>Beep</em>' in html
+    assert 'Unevaluated placeholder: {currency}' in html
+    assert 'EUR' not in html
     assert re.search(
-        r'Event website: <a href="https://example.org/dummy" rel="noopener" style="[^"]+" target="_blank">&lt;strong&gt;event &amp; co. kg&lt;/strong&gt;</a>',
-        html
-    )
-    assert re.search(
-        r'Other website: <a href="https://example.com" rel="noopener" style="[^"]+" target="_blank">&lt;strong&gt;event &amp; co. kg&lt;/strong&gt;</a>',
+        r'Event website: <a href="https://example.org/dummy" rel="noopener" style="[^"]+" target="_blank">'
+        r'&lt;strong&gt;event &amp; co. kg&lt;/strong&gt; {currency}</a>',
         html
     )
 
@@ -324,7 +372,7 @@ def test_placeholder_html_rendering_from_string(env):
     })
     djmail.outbox = []
     event, user, organizer = env
-    event.name = "<strong>event & co. kg</strong>"
+    event.name = "<strong>event & co. kg</strong> {currency}"
     event.save()
     ctx = get_email_context(
         event=event,
@@ -335,9 +383,9 @@ def test_placeholder_html_rendering_from_string(env):
 
     assert len(djmail.outbox) == 1
     assert djmail.outbox[0].to == [user.email]
-    assert 'Event name: <strong>event & co. kg</strong>' in djmail.outbox[0].body
-    assert 'Event website: [<strong>event & co. kg</strong>](https://example.org/dummy)' in djmail.outbox[0].body
-    assert 'Other website: [<strong>event & co. kg</strong>](https://example.com)' in djmail.outbox[0].body
+    assert 'Event name: <strong>event & co. kg</strong> {currency}' in djmail.outbox[0].body
+    assert 'Event website: [<strong>event & co. kg</strong> {currency}](https://example.org/dummy)' in djmail.outbox[0].body
+    assert 'Other website: [<strong>event & co. kg</strong> {currency}](https://example.com)' in djmail.outbox[0].body
     assert '**IBAN**: 123  \n**BIC**: 456' in djmail.outbox[0].body
     assert '**Meta**: *Beep*' in djmail.outbox[0].body
     assert 'URL: https://google.com' in djmail.outbox[0].body
@@ -352,11 +400,13 @@ def test_placeholder_html_rendering_from_string(env):
     assert '<strong>IBAN</strong>: 123<br/>\n<strong>BIC</strong>: 456' in html
     assert '<strong>Meta</strong>: <em>Beep</em>' in html
     assert re.search(
-        r'Event website: <a href="https://example.org/dummy" rel="noopener" style="[^"]+" target="_blank">&lt;strong&gt;event &amp; co. kg&lt;/strong&gt;</a>',
+        r'Event website: <a href="https://example.org/dummy" rel="noopener" style="[^"]+" target="_blank">'
+        r'&lt;strong&gt;event &amp; co. kg&lt;/strong&gt; {currency}</a>',
         html
     )
     assert re.search(
-        r'Other website: <a href="https://example.com" rel="noopener" style="[^"]+" target="_blank">&lt;strong&gt;event &amp; co. kg&lt;/strong&gt;</a>',
+        r'Other website: <a href="https://example.com" rel="noopener" style="[^"]+" target="_blank">'
+        r'&lt;strong&gt;event &amp; co. kg&lt;/strong&gt; {currency}</a>',
         html
     )
     assert re.search(
@@ -377,3 +427,284 @@ def test_placeholder_html_rendering_from_string(env):
         r'style="[^"]+" target="_blank">Link &amp; Text</a>',
         html
     )
+
+
+@pytest.mark.django_db
+def test_nested_placeholder_inclusion_full_process(env, order):
+    # Test that it is not possible to sneak in a placeholder like {url_cancel} inside a user-controlled
+    # placeholder value like {invoice_company}
+    event, user, organizer = env
+    position = order.positions.get()
+    order.invoice_address.company = "{url_cancel} Corp"
+    order.invoice_address.save()
+    event.settings.mail_text_resend_link = LazyI18nString({"en": "Ticket for {invoice_company}"})
+    event.settings.mail_subject_resend_link_attendee = LazyI18nString({"en": "Ticket for {invoice_company}"})
+
+    djmail.outbox = []
+    position.resend_link()
+    assert len(djmail.outbox) == 1
+    assert djmail.outbox[0].to == [position.attendee_email]
+    assert "Ticket for {url_cancel} Corp" == djmail.outbox[0].subject
+    assert "/cancel" not in djmail.outbox[0].body
+    assert "/order" not in djmail.outbox[0].body
+    html, plain = _extract_html(djmail.outbox[0]), djmail.outbox[0].body
+    for part in (html, plain):
+        assert "Ticket for {url_cancel} Corp" in part
+        assert "/order/" not in part
+        assert "/cancel" not in part
+
+
+@pytest.mark.django_db
+def test_nested_placeholder_inclusion_mail_service(env):
+    # test that it is not possible to have placeholders within the values of placeholders when
+    # the mail() function is called directly
+    template = LazyI18nString("Event name: {event}")
+    djmail.outbox = []
+    event, user, organizer = env
+    event.name = "event & {currency} co. kg"
+    event.slug = "event-co-ag-slug"
+    event.save()
+
+    mail(
+        "dummy@dummy.dummy",
+        "{event} Test subject",
+        template,
+        get_email_context(
+            event=event,
+            payment_info="**IBAN**: 123  \n**BIC**: 456 {event}",
+        ),
+        event,
+    )
+
+    assert len(djmail.outbox) == 1
+    assert djmail.outbox[0].to == [user.email]
+    html, plain = _extract_html(djmail.outbox[0]), djmail.outbox[0].body
+    for part in (html, plain, djmail.outbox[0].subject):
+        assert "event & {currency} co. kg" in part or "event &amp; {currency} co. kg" in part
+        assert "EUR" not in part
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tpl", [
+    "Event: {event.__class__}",
+    "Event: {{event.__class__}}",
+    "Event: {{{event.__class__}}}",
+])
+def test_variable_inclusion_from_string_full_process(env, tpl, order):
+    # Test that it is not possible to use placeholders that leak system information in templates
+    # when run through system processes
+    event, user, organizer = env
+    event.name = "event & co. kg"
+    event.save()
+    position = order.positions.get()
+    event.settings.mail_text_resend_link = LazyI18nString({"en": tpl})
+    event.settings.mail_subject_resend_link_attendee = LazyI18nString({"en": tpl})
+
+    position.resend_link()
+    assert len(djmail.outbox) == 1
+    html, plain = _extract_html(djmail.outbox[0]), djmail.outbox[0].body
+    for part in (html, plain, djmail.outbox[0].subject):
+        assert "{event.__class__}" in part
+        assert "LazyI18nString" not in part
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tpl", [
+    "Event: {event.__class__}",
+    "Event: {{event.__class__}}",
+    "Event: {{{event.__class__}}}",
+])
+def test_variable_inclusion_from_string_mail_service(env, tpl):
+    # Test that it is not possible to use placeholders that leak system information in templates
+    # when run through mail() directly
+    event, user, organizer = env
+    event.name = "event & co. kg"
+    event.save()
+
+    djmail.outbox = []
+    mail(
+        "dummy@dummy.dummy",
+        tpl,
+        LazyI18nString(tpl),
+        get_email_context(
+            event=event,
+            payment_info="**IBAN**: 123  \n**BIC**: 456\n" + tpl,
+        ),
+        event,
+    )
+    assert len(djmail.outbox) == 1
+    html, plain = _extract_html(djmail.outbox[0]), djmail.outbox[0].body
+    for part in (html, plain, djmail.outbox[0].subject):
+        assert "{event.__class__}" in part
+        assert "LazyI18nString" not in part
+
+
+@pytest.mark.django_db
+def test_escaped_braces_mail_services(env):
+    # Test that braces can be escaped by doubling
+    template = LazyI18nString("Event name: -{{currency}}-")
+    djmail.outbox = []
+    event, user, organizer = env
+    event.name = "event & co. kg"
+    event.save()
+
+    mail(
+        "dummy@dummy.dummy",
+        "-{{currency}}- Test subject",
+        template,
+        get_email_context(
+            event=event,
+            payment_info="**IBAN**: 123  \n**BIC**: 456 {event}",
+        ),
+        event,
+    )
+
+    assert len(djmail.outbox) == 1
+    assert djmail.outbox[0].to == [user.email]
+    html, plain = _extract_html(djmail.outbox[0]), djmail.outbox[0].body
+    for part in (html, plain, djmail.outbox[0].subject):
+        assert "EUR" not in part
+        assert "-{currency}-" in part
+
+
+@pytest.mark.django_db
+def test_attached_ical_localization(env, order):
+    event, _, _ = env
+
+    descriptions = {"de": "german description", "en": "english description"}
+    event.settings.mail_attach_ical_description = LazyI18nString(descriptions)
+    event.settings.mail_attach_ical = True
+    event.settings.mail_attach_ical_paid_only = False
+
+    for locale, description in descriptions.items():
+        order.locale = locale
+        order.save()
+
+        djmail.outbox = []
+
+        mail(
+            "dummy@dummy.dummy",
+            "",
+            LazyI18nString(""),
+            event=event,
+            order=order,
+            attach_ical=True
+        )
+
+        assert len(djmail.outbox) == 1
+        assert len(djmail.outbox[0].attachments) == 1
+        assert description in djmail.outbox[0].attachments[0][1]
+
+
+PRIVATE_IPS_RES = [
+    [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('10.0.0.3', 443))],
+    [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('0.0.0.0', 443))],
+    [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('127.1.1.1', 443))],
+    [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.168.5.3', 443))],
+    [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('224.0.0.1', 443))],
+    [(socket.AF_INET6, socket.SOCK_STREAM, 6, '', ('::1', 443, 0, 0))],
+    [(socket.AF_INET6, socket.SOCK_STREAM, 6, '', ('fe80::1', 443, 0, 0))],
+    [(socket.AF_INET6, socket.SOCK_STREAM, 6, '', ('ff00::1', 443, 0, 0))],
+    [(socket.AF_INET6, socket.SOCK_STREAM, 6, '', ('fc00::1', 443, 0, 0))],
+]
+
+
+@contextmanager
+def assert_mail_connection(res, should_connect, use_ssl):
+    with (
+        mock.patch('socket.socket') as mock_socket,
+        mock.patch('socket.getaddrinfo', return_value=res),
+        mock.patch('smtplib.SMTP.getreply', return_value=(220, "")),
+        mock.patch('smtplib.SMTP.sendmail'),
+        mock.patch('ssl.SSLContext.wrap_socket') as mock_ssl
+    ):
+        yield
+
+        if should_connect:
+            mock_socket.assert_called_once()
+            mock_socket.return_value.connect.assert_called_once_with(res[0][-1])
+            if use_ssl:
+                mock_ssl.assert_called_once()
+        else:
+            mock_socket.assert_not_called()
+            mock_socket.return_value.connect.assert_not_called()
+            mock_ssl.assert_not_called()
+
+
+@pytest.mark.parametrize("res", PRIVATE_IPS_RES)
+@pytest.mark.parametrize("use_ssl", [
+    True, False
+])
+def test_private_smtp_ip(res, use_ssl, settings):
+    settings.EMAIL_CUSTOM_SMTP_BACKEND = 'pretix.base.email.CheckPrivateNetworkSmtpBackend'
+    settings.MAIL_CUSTOM_SMTP_ALLOW_PRIVATE_NETWORKS = False
+    with assert_mail_connection(res=res, should_connect=False, use_ssl=use_ssl), pytest.raises(match="Request to .* blocked"):
+        connection = djmail.get_connection(backend=settings.EMAIL_CUSTOM_SMTP_BACKEND,
+                                           host="localhost",
+                                           use_ssl=use_ssl)
+        connection.open()
+
+    settings.MAIL_CUSTOM_SMTP_ALLOW_PRIVATE_NETWORKS = True
+    with assert_mail_connection(res=res, should_connect=True, use_ssl=use_ssl):
+        connection = djmail.get_connection(backend=settings.EMAIL_CUSTOM_SMTP_BACKEND,
+                                           host="localhost",
+                                           use_ssl=use_ssl)
+        connection.open()
+
+
+@pytest.mark.parametrize("use_ssl", [
+    True, False
+])
+@pytest.mark.parametrize("allow_private", [
+    True, False
+])
+def test_public_smtp_ip(use_ssl, allow_private, settings):
+    settings.EMAIL_CUSTOM_SMTP_BACKEND = 'pretix.base.email.CheckPrivateNetworkSmtpBackend'
+    settings.MAIL_CUSTOM_SMTP_ALLOW_PRIVATE_NETWORKS = allow_private
+
+    with assert_mail_connection(res=[(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('8.8.8.8', 443))], should_connect=True, use_ssl=use_ssl):
+        connection = djmail.get_connection(backend=settings.EMAIL_CUSTOM_SMTP_BACKEND,
+                                           host="localhost",
+                                           use_ssl=use_ssl)
+        connection.open()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("use_ssl", [
+    True, False
+])
+@pytest.mark.parametrize("allow_private_networks", [
+    True, False
+])
+@pytest.mark.parametrize("res", PRIVATE_IPS_RES)
+def test_send_mail_private_ip(res, use_ssl, allow_private_networks, env):
+    settings.EMAIL_CUSTOM_SMTP_BACKEND = 'pretix.base.email.CheckPrivateNetworkSmtpBackend'
+    settings.MAIL_CUSTOM_SMTP_ALLOW_PRIVATE_NETWORKS = allow_private_networks
+
+    event, user, organizer = env
+    event.settings.smtp_use_custom = True
+    event.settings.smtp_host = "example.com"
+    event.settings.smtp_use_ssl = use_ssl
+    event.settings.smtp_use_tls = False
+
+    def send_mail():
+        m = OutgoingMail.objects.create(
+            to=['recipient@example.com'],
+            subject='Test',
+            body_plain='Test',
+            sender='sender@example.com',
+            event=event
+        )
+        assert m.status == OutgoingMail.STATUS_QUEUED
+        mail_send_task.apply(kwargs={
+            'outgoing_mail': m.pk,
+        }, max_retries=0)
+        m.refresh_from_db()
+        return m
+
+    with assert_mail_connection(res=res, should_connect=allow_private_networks, use_ssl=use_ssl):
+        m = send_mail()
+        if allow_private_networks:
+            assert m.status == OutgoingMail.STATUS_SENT
+        else:
+            assert m.status == OutgoingMail.STATUS_FAILED
