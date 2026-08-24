@@ -217,6 +217,7 @@ class CheckInListShow(EventPermissionRequiredMixin, PaginationMixin, CheckInList
                     # This would be correct, so guess on which database it works… Yes, it's PostgreSQL.
                     e.last_exit_aware = e.last_exit
 
+        if self.list.subevent and self.list.subevent.has_session_blocks:
             # populate the most recent checkins for each given position (entry) session block, if any
             e.checkin_by_block = [
                 (block, next(
