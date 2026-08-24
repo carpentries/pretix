@@ -340,7 +340,7 @@ class InlineCheckinSerializer(I18nAwareModelSerializer):
 
     class Meta:
         model = Checkin
-        fields = ('id', 'datetime', 'list', 'auto_checked_in', 'gate', 'device', 'device_id', 'type')
+        fields = ('id', 'datetime', 'list', 'auto_checked_in', 'gate', 'device', 'device_id', 'type', 'session_block')
 
 
 class CheckinSerializer(I18nAwareModelSerializer):
@@ -354,7 +354,7 @@ class CheckinSerializer(I18nAwareModelSerializer):
         model = Checkin
         fields = (
             'id', 'successful', 'error_reason', 'error_explanation', 'position', 'datetime', 'list', 'created',
-            'auto_checked_in', 'gate', 'device', 'device_id', 'type'
+            'auto_checked_in', 'gate', 'device', 'device_id', 'type', 'session_block',
         )
 
 
@@ -390,7 +390,7 @@ class FailedCheckinSerializer(I18nAwareModelSerializer):
     class Meta:
         model = Checkin
         fields = ('error_reason', 'error_explanation', 'raw_barcode', 'raw_item', 'raw_variation',
-                  'raw_subevent', 'nonce', 'datetime', 'type', 'position')
+                  'raw_subevent', 'nonce', 'datetime', 'type', 'position', 'session_block')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

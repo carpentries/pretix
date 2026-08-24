@@ -580,6 +580,7 @@ class EventIndex(EventViewMixin, EventListMixin, CartMixin, TemplateView):
         )
 
         context['allow_waitinglist'] = context['ev'].waiting_list_active and context['ev'].presale_is_running
+
         if not self.request.event.has_subevents or self.subevent:
             # Fetch all items
             items, display_add_to_cart = get_grouped_items(
@@ -640,7 +641,6 @@ class EventIndex(EventViewMixin, EventListMixin, CartMixin, TemplateView):
             context['frontpage_text'] = templating_context.format(str(self.request.event.settings.frontpage_text))
 
         if self.request.event.has_subevents:
-            # Fetch all items
             context['subevent_list'] = SimpleLazyObject(self._subevent_list_context)
             context['subevent_list_cache_key'] = self._subevent_list_cachekey()
 

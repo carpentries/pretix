@@ -546,7 +546,7 @@ class SubEventEditorMixin(MetaDataEditorMixin):
 
     def is_valid(self, form):
         return form.is_valid() and all([f.is_valid() for f in self.itemvar_forms]) and self.formset.is_valid() and (
-            all([f.is_valid() for f in self.meta_forms]) and self.session_block_formset.is_valid()
+            all([f.is_valid() for f in self.meta_forms]) and all([f.is_valid() for f in self.session_block_formset])
         ) and self.cl_formset.is_valid() and all(f.is_valid() for f in self.plugin_forms)
 
 

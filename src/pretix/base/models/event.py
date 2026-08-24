@@ -146,9 +146,21 @@ class EventMixin:
             self.date_from.astimezone(tz), "TIME_FORMAT"
         )
 
+    def get_time_to_display(self, tz=None) -> str:
+        """
+        Returns a formatted string containing the end time of the event, ignoring
+        the ``show_times`` setting.
+        """
+        tz = tz or self.timezone
+        if not self.settings.show_date_to or not self.date_to:
+            return ""
+        return _date(
+            self.date_to.astimezone(tz), "TIME_FORMAT"
+        )
+
     def get_date_to_display(self, tz=None, show_times=True, short=False) -> str:
         """
-        Returns a formatted string containing the start date of the event with respect
+        Returns a formatted string containing the end date of the event with respect
         to the current locale and to the ``show_times`` setting. Returns an empty string
         if ``show_date_to`` is ``False``.
         """
@@ -171,6 +183,67 @@ class EventMixin:
         return _date(
             self.date_to.astimezone(tz), ("D" if short else "l")
         )
+
+    def get_time_range_display(self, tz=None, force_show_end=False, as_html=False) -> str:
+        """
+        Returns a formatted string containing the start time and the end time
+        of the event with respect to the current locale and to the ``show_date_to``
+        setting. Only times are shown.
+        """
+        tz = tz or self.timezone
+        if (not self.settings.show_date_to and not force_show_end) or not self.date_to:
+            time_str = _date(self.date_from.astimezone(tz), "TIME_FORMAT")
+        else:
+            time_str = '{}–{}'.format(
+                _date(self.date_from.astimezone(tz), "TIME_FORMAT"),
+                _date(self.date_to.astimezone(tz), "TIME_FORMAT"),
+            )
+
+        if as_html:
+            return format_html(
+                '<time datetime="{}" data-timezone="{}" data-time-short>{}</time>',
+                self.date_from.isoformat(),
+                str(tz),
+                time_str,
+            )
+        else:
+            return time_str
+
+    def get_time_begin_end_display(self, tz=None, force_show_end=False, as_html=False) -> str:
+        """
+        Returns a formatted string containing the start time and the end time
+        of the event with respect to the current locale and to the ``show_date_to``
+        setting. Only times are shown.
+        """
+        tz = tz or self.timezone
+        df = _date(self.date_from.astimezone(tz), "TIME_FORMAT"),
+        dt = None
+
+        if (self.settings.show_date_to or force_show_end) and self.date_to:
+            dt = _date(self.date_to.astimezone(tz), "TIME_FORMAT"),
+
+        if as_html:
+            start_str = format_html(
+                '<span data-time="{}" data-timezone="{}"><time datetime="{}" data-timezone="{}" data-time-short>{}</time></span>',
+                self.date_from.isoformat(),
+                str(tz),
+                self.date_from.isoformat(),
+                str(tz),
+                df,
+            )
+
+            if dt:
+                end_str = format_html(
+                    '<span data-time="{}" data-timezone="{}"><time datetime="{}" data-timezone="{}" data-time-short>{}</time></span>',
+                    self.date_to.isoformat(),
+                    str(tz),
+                    self.date_to.isoformat(),
+                    str(tz),
+                    dt,
+                )
+                return format_html('{}<br>{}', start_str, end_str)
+            return format_html('{}', start_str)
+        return dt
 
     def get_date_range_display(self, tz=None, force_show_end=False, as_html=False, try_to_show_times=False) -> str:
         """
@@ -222,6 +295,9 @@ class EventMixin:
 
     def get_date_range_display_as_html(self, tz=None, force_show_end=False) -> str:
         return self.get_date_range_display(tz, force_show_end, as_html=True)
+
+    def get_time_range_display_as_html(self, tz=None, force_show_end=False) -> str:
+        return self.get_time_range_display(tz, force_show_end, as_html=True)
 
     @property
     def timezone(self):
@@ -1850,15 +1926,18 @@ class SubEventSessionBlock(models.Model):
         verbose_name=_("Location")
     )
 
+    # def __init__(self, *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+    #     self.__original_dates = (self.date_from, self.date_to)
+    #     self.settings = self.subevent.settings
+
     class Meta:
         ordering = ['date_from']
         verbose_name = _("Session block")
         verbose_name_plural = _("Session blocks")
 
     def __str__(self):
-        if self.name:
-            return f"{self.subevent.name} - {self.name}"
-        return f"{self.subevent.name} - {self.date_from.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.subevent.name}: [{self.date_from.strftime('%Y-%m-%d %H:%M')} - {self.date_to.strftime('%Y-%m-%d %H:%M') if self.date_to else '...'}]"
 
     def clean(self):
         super().clean()

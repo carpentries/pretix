@@ -10,16 +10,49 @@
                 {{ subev.name }}
             </a>
         </h3>
-        <p class="col-md-3 col-xs-12" id="subevent-{{ subev.pk }}-desc">
+        <p class="col-md-12 col-xs-12" id="subevent-{{ subev.pk }}-desc">
             {{ subev.get_date_range_display_as_html }}
-            {% if event.settings.show_times %}
+            {% if subev.has_session_blocks %}
                 <br>
-                <span class="event-time event-time-start" data-time="{{ subev.date_from.isoformat }}" data-timezone="{{ event.timezone }}" data-tzstr="{{ subev.tzstr }}" data-time>
+                <div class="col-md-12 col-xs-12 session-blocks{% if subev.event.is_remote %} event-is-remote{% endif %}">
                     <br>
-                    {% icon "clock-o" %}
-                    <span class="sr-only">{% trans "Time of day" %}</span>
-                    <time datetime="{{ subev.date_from.isoformat }}">{{ subev.date_from|date:"TIME_FORMAT" }}</time>
-                </span>
+                    {% for session_block in subev.session_blocks.all %}
+                        <strong>Session {{ forloop.counter }} - {{ session_block.date_from|date:"DATE_FORMAT" }}</strong>
+                        <br>
+                        <span class="event-time event-time-start" data-time="{{ session_block.date_from.isoformat }}" data-timezone="{{ event.timezone }}">
+                            <br>
+                            <span class="fa fa-clock-o" aria-hidden="true"></span>
+                            {% with time_human=session_block.date_from|date:"TIME_FORMAT" time_24=session_block.date_from|time:"H:i" %}
+                                {% blocktrans trimmed with time='<time datetime="'|add:time_24|add:'">'|add:time_human|add:"</time>"|safe %}
+                                    Begin: {{ time }}
+                                {% endblocktrans %}
+                                {{ subev.tzstr }}
+                            {% endwith %}
+                        </span>
+                        {% if event.settings.show_date_to and session_block.date_to %}
+                        <span class="event-time event-time-end" data-time="{{ session_block.date_to.isoformat }}" data-timezone="{{ event.timezone }}">
+                            <br>
+                            <span class="fa fa-clock-o" aria-hidden="true"></span>
+                            {% with time_human=session_block.date_to|date:"TIME_FORMAT" time_24=session_block.date_to|time:"H:i" %}
+                                {% blocktrans trimmed with time='<time datetime="'|add:time_24|add:'">'|add:time_human|add:"</time>"|safe %}
+                                    End: {{ time }}
+                                {% endblocktrans %}
+                                {{ subev.tzstr }}
+                            {% endwith %}
+                        </span>
+                        {% endif %}
+                        <br><br>
+                    {% endfor %}
+                </div>
+            {% else %}
+                {% if event.settings.show_times %}
+                    <br>
+                    <span data-time="{{ subev.date_from.isoformat }}" data-timezone="{{ event.timezone }}" data-time-short>
+                        {% icon "clock-o" %}
+                        <span class="sr-only">{% trans "Time of day" %}</span>
+                        <time datetime="{{ subev.date_from.isoformat }}">{{ subev.date_from|date:"TIME_FORMAT" }}</time>
+                    </span>
+                {% endif %}
             {% endif %}
         </p>
         <p class="col-md-3 col-xs-6">

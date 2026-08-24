@@ -7,7 +7,7 @@
         <h2 class="panel-title">
             <span>
                 <i class="fa fa-info" aria-hidden="true"></i>
-                <strong>Event Information</strong>
+                <strong>{% if title %}{{ title }}{% else %}{% trans "Event Information" %}{% endif %}</strong>
             </span>
         </h2>
     </summary>
@@ -30,9 +30,9 @@
                 </div>
                 <p>
                     {{ ev.get_date_range_display_as_html }}
-                    <br><br>
                     {% if event.settings.show_times %}
                         {% if ev.has_session_blocks %}
+                            <br>
                             {% for session_block in ev.session_blocks.all %}
                                 <strong>Session {{ forloop.counter }} - {{ session_block.date_from|date:"DATE_FORMAT" }}</strong>
                                 <span class="event-time event-time-start" data-time="{{ session_block.date_from.isoformat }}" data-timezone="{{ request.event.timezone }}">
