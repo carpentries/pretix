@@ -53,34 +53,38 @@
                         {% if e.settings.show_dates_on_frontpage %}
                             {% if e.has_subevents %}
                                 <table class="col-md-3 col-xs-12{% if e.is_remote%} event-is-remote{% endif %}">
-                                {% for subev in e.subevents.all %}
-                                    <tr>
-                                        <td>
-                                        {% icon "calendar" %} {{ subev.get_date_range_display_as_html }}
-                                        {% if subev.has_session_blocks %}
-                                            <br>
-                                            <dl>
-                                            {% for session_block in subev.session_blocks.all %}
-                                                <div class="row">
-                                                    <dt class="event-name">Session {{ forloop.counter }} - {{ session_block.date_from|date:"DATE_FORMAT" }}</dt>
-                                                    <dl>
-                                                    <span class="event-time" data-time="{{ session_block.date_from.isoformat }}" data-time-to="{{ session_block.date_to.isoformat }}" data-timezone="{{ e.timezone }}" data-time-short>
-                                                      {% icon "clock-o" %}
-                                                      <time datetime="{{ session_block.date_from|date_fast:"H:i" }}">{{ session_block.date_from|date_fast:"TIME_FORMAT" }} </time>
-                                                      {% if e.settings.show_date_to and session_block.date_to %}
-                                                          <span aria-hidden="true">–</span><span class="sr-only">{% trans "until" context "timerange" %}</span> <time datetime="{{ session_block.date_to|date_fast:"H:i" }}">{{ session_block.date_to|date_fast:"TIME_FORMAT" }}</time>
-                                                      {% endif %}
-                                                      {% if multiple_timezones or session_block.subevent.event.is_remote %}
-                                                          {{ session_block.subevent.event.tzstr }}<br>
-                                                      {% endif %}
-                                                    </span>
-                                                    </dl>
-                                                </div>
-                                            {% endfor %}
-                                        {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
+                                    {% if e.subevents.count > 1 %}
+                                        <tr><td>{% trans "Multiple dates" %}</td></tr>
+                                    {% elif e.subevents.count == 1 %}
+                                        {% for subev in e.subevents.all %}
+                                        <tr>
+                                            <td>
+                                            {% icon "calendar" %} {{ e.subevents.first.get_date_range_display_as_html }}
+                                            {% if subev.has_session_blocks %}
+                                                <br>
+                                                <dl>
+                                                {% for session_block in subev.session_blocks.all %}
+                                                    <div class="row">
+                                                        <dt class="event-name">Session {{ forloop.counter }} - {{ session_block.date_from|date:"DATE_FORMAT" }}</dt>
+                                                        <dl>
+                                                        <span class="event-time" data-time="{{ session_block.date_from.isoformat }}" data-time-to="{{ session_block.date_to.isoformat }}" data-timezone="{{ e.timezone }}" data-time-short>
+                                                        {% icon "clock-o" %}
+                                                        <time datetime="{{ session_block.date_from|date_fast:"H:i" }}">{{ session_block.date_from|date_fast:"TIME_FORMAT" }} </time>
+                                                        {% if e.settings.show_date_to and session_block.date_to %}
+                                                            <span aria-hidden="true">–</span><span class="sr-only">{% trans "until" context "timerange" %}</span> <time datetime="{{ session_block.date_to|date_fast:"H:i" }}">{{ session_block.date_to|date_fast:"TIME_FORMAT" }}</time>
+                                                        {% endif %}
+                                                        {% if multiple_timezones or session_block.subevent.event.is_remote %}
+                                                            {{ session_block.subevent.event.tzstr }}<br>
+                                                        {% endif %}
+                                                        </span>
+                                                        </dl>
+                                                    </div>
+                                                {% endfor %}
+                                            {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% endif %}
                                 </table>
                             {% else %}
                                 <p class="col-md-3 col-xs-12" id="event-{{ e.pk }}-desc">
