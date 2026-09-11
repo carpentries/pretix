@@ -47,11 +47,13 @@
             {% else %}
                 {% if event.settings.show_times %}
                     <br>
-                    <span data-time="{{ subev.date_from.isoformat }}" data-timezone="{{ event.timezone }}" data-time-short>
-                        {% icon "clock-o" %}
-                        <span class="sr-only">{% trans "Time of day" %}</span>
-                        <time datetime="{{ subev.date_from.isoformat }}">{{ subev.date_from|date:"TIME_FORMAT" }}</time>
-                    </span>
+                    <div class="col-md-12 col-xs-12 session-blocks{% if subev.event.is_remote %} event-is-remote{% endif %}">
+                        <span data-time="{{ subev.date_from.isoformat }}" data-timezone="{{ event.timezone }}" data-time-short>
+                            {% icon "clock-o" %}
+                            <span class="sr-only">{% trans "Time of day" %}</span>
+                            <time datetime="{{ subev.date_from.isoformat }}">{{ subev.date_from|date:"TIME_FORMAT" }}</time>
+                        </span>
+                    </div>
                 {% endif %}
             {% endif %}
         </p>

@@ -87,7 +87,7 @@
                                     {% endif %}
                                 </table>
                             {% else %}
-                                <p class="col-md-3 col-xs-12" id="event-{{ e.pk }}-desc">
+                                <p class="col-md-3 col-xs-12{% if e.is_remote%} event-is-remote{% endif %}" id="event-{{ e.pk }}-desc">
                                 {{ e.daterange|default:e.get_date_range_display_as_html }}
                                 {% if e.settings.show_times %}
                                     {% timezone e.tzname %}
